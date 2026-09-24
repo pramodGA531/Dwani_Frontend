@@ -15,6 +15,7 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
   }, [existingStream]);
   const [amplitude, setAmplitude] = useState(0);
   const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [audioUrl, setAudioUrl] = useState(null);
 
   const wsRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -26,6 +27,8 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
   const backendFinalTextRef = useRef("");
   const accumulatedBrowserTextRef = useRef("");
   const hasFatalErrorRef = useRef(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   const onSilenceRef = useRef(onSilenceDetected);
   useEffect(() => { onSilenceRef.current = onSilenceDetected; }, [onSilenceDetected]);
@@ -37,6 +40,10 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
+    }
+
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      try { mediaRecorderRef.current.stop(); } catch(e) {}
     }
 
     try {
@@ -135,6 +142,9 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
                 wsRef.current = null;
               }
               onSilenceRef.current?.(textToSubmit);
+            } else {
+              // Update the React state to show partial transcript
+              setVoiceTranscript(text);
             }
           }
         } catch(e) {
@@ -149,6 +159,9 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
       ws.onclose = () => {
         setIsListening(false);
         setIsProcessing(false);
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+          try { mediaRecorderRef.current.stop(); } catch(e) {}
+        }
       };
 
       // --- 3. SETUP AUDIO CONTEXT (To send raw bytes to Backend) ---
@@ -156,11 +169,10 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
       if (!stream) {
         stream = await navigator.mediaDevices.getUserMedia({ 
           audio: {
-            sampleRate: 16000,
             channelCount: 1,
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
           } 
         });
       }
@@ -169,7 +181,9 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
       // Ensure AudioContext exists and is running
       if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
         const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        audioContextRef.current = new AudioCtx({ sampleRate: 16000 });
+        // Do NOT force 16000 Hz — Chrome software-resamples from 48kHz which causes
+        // the noisy/distorted audio. Run at native hardware rate instead.
+        audioContextRef.current = new AudioCtx();
       }
 
       // ALWAYS recreate the ScriptProcessor to prevent Chrome from silently dropping the listener
@@ -178,55 +192,82 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
       }
 
       const audioContext = audioContextRef.current;
-      
-      if (!sourceRef.current) {
-        sourceRef.current = audioContext.createMediaStreamSource(stream);
-      } else {
+      const nativeSampleRate = audioContext.sampleRate; // typically 48000
+      const targetSampleRate = 16000;
+      const downsampleRatio = Math.round(nativeSampleRate / targetSampleRate); // 3
+
+      if (sourceRef.current) {
         try { sourceRef.current.disconnect(); } catch (e) {}
       }
+      sourceRef.current = audioContext.createMediaStreamSource(stream);
       const source = sourceRef.current;
       
-      // Use AudioWorklet to prevent main-thread frame dropping!
+      // Audio analysis showed RMS=0.04 (very quiet, ideal is 0.15-0.30).
+      // Max amplitude is only 0.36 so 4x gain is safe — no clipping risk.
+      const boostNode = audioContext.createGain();
+      boostNode.gain.value = 4.0;
+      source.connect(boostNode);
+      
+      // Use a unique processor name per session — the AudioWorkletGlobalScope
+      // is shared within an AudioContext, so re-registering the same name on
+      // subsequent recordings throws NotSupportedError: already registered.
+      const workletName = `recorder-worklet-${Date.now()}`;
       const workletCode = `
         class RecorderWorklet extends AudioWorkletProcessor {
-          constructor() {
+          constructor(options) {
             super();
-            this.bufferSize = 4096;
-            this.buffer = new Float32Array(this.bufferSize);
-            this.bufferIndex = 0;
+            this.ratio = (options.processorOptions && options.processorOptions.downsampleRatio) || 3;
+            this.outputBufferSize = 1024;  // 64ms at 16kHz — smaller = less initial delay
+            this.outputBuffer = new Float32Array(this.outputBufferSize);
+            this.outputIndex = 0;
+            this.accumulator = [];
           }
           process(inputs, outputs, parameters) {
             const input = inputs[0];
             if (input && input.length > 0 && input[0]) {
               const channelData = input[0];
               for (let i = 0; i < channelData.length; i++) {
-                this.buffer[this.bufferIndex++] = channelData[i];
-                if (this.bufferIndex >= this.bufferSize) {
-                  const float32 = new Float32Array(this.buffer);
-                  this.port.postMessage(float32.buffer, [float32.buffer]);
-                  this.buffer = new Float32Array(this.bufferSize);
-                  this.bufferIndex = 0;
+                this.accumulator.push(channelData[i]);
+                if (this.accumulator.length >= this.ratio) {
+                  // Average downsample: cleaner than decimation
+                  let sum = 0;
+                  for (let j = 0; j < this.ratio; j++) sum += this.accumulator[j];
+                  this.outputBuffer[this.outputIndex++] = sum / this.ratio;
+                  this.accumulator = [];
+                  if (this.outputIndex >= this.outputBufferSize) {
+                    const out = new Float32Array(this.outputBuffer);
+                    this.port.postMessage(out.buffer, [out.buffer]);
+                    this.outputBuffer = new Float32Array(this.outputBufferSize);
+                    this.outputIndex = 0;
+                  }
                 }
               }
             }
             return true;
           }
         }
-        registerProcessor('recorder-worklet', RecorderWorklet);
+        registerProcessor('${workletName}', RecorderWorklet);
       `;
       const blob = new Blob([workletCode], { type: 'application/javascript' });
       const workletUrl = URL.createObjectURL(blob);
       await audioContext.audioWorklet.addModule(workletUrl);
       
-      const workletNode = new AudioWorkletNode(audioContext, 'recorder-worklet');
+      const workletNode = new AudioWorkletNode(audioContext, workletName, {
+        processorOptions: { downsampleRatio }
+      });
       processorRef.current = workletNode;
       
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0;
+      // We mute the worklet node's output to destination to avoid hearing ourselves (feedback)
+      const muteNode = audioContext.createGain();
+      muteNode.gain.value = 0;
       
-      source.connect(workletNode);
-      workletNode.connect(gainNode);
-      gainNode.connect(audioContext.destination);
+      boostNode.connect(workletNode);
+      workletNode.connect(muteNode);
+      muteNode.connect(audioContext.destination);
+
+      // Create a destination node for the MediaRecorder to capture the boosted audio
+      const destNode = audioContext.createMediaStreamDestination();
+      boostNode.connect(destNode);
 
       workletNode.port.onmessage = (e) => {
         if (!isListeningRef.current) return;
@@ -246,13 +287,31 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
       setVoiceTranscript("");
       backendFinalTextRef.current = "";
 
+      // Start local recording for playback
+      setAudioUrl(null);
+      audioChunksRef.current = [];
+      try {
+        const mediaRecorder = new MediaRecorder(destNode.stream);
+        mediaRecorderRef.current = mediaRecorder;
+        mediaRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) audioChunksRef.current.push(e.data);
+        };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          setAudioUrl(URL.createObjectURL(blob));
+        };
+        mediaRecorder.start();
+      } catch (err) {
+        console.warn("[STT] Failed to start MediaRecorder", err);
+      }
+
     } catch (err) {
       console.error("[STT] Start failed:", err);
       stopListening();
     }
   }, [isListening, stopListening, setIsListening]);
 
-  const finalizeTranscription = useCallback(() => {
+  const finalizeTranscription = useCallback(async () => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
       setIsProcessing(true);
       wsRef.current.send(JSON.stringify({ type: "finalize" }));
@@ -260,10 +319,20 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
       setIsListening(false);
       setAmplitude(0);
 
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        try { mediaRecorderRef.current.stop(); } catch(e) {}
+      }
+
       if (silenceTimerRef.current) {
         clearTimeout(silenceTimerRef.current);
         silenceTimerRef.current = null;
       }
+
+      // Wait 800ms before tearing down the audio pipeline.
+      // The AudioWorklet buffers 4096 samples (~256ms at 16kHz) before sending each
+      // message. Without this delay, the last buffer is dropped when we disconnect,
+      // causing the transcript to be cut off mid-sentence.
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
       try {
         if (!existingStreamRef.current && processorRef.current) {
@@ -295,5 +364,5 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
 
   useEffect(() => () => stopListening(), [stopListening]);
 
-  return { isListening, isProcessing, amplitude, transcript: voiceTranscript, startListening, stopListening, finalizeTranscription };
+  return { isListening, isProcessing, amplitude, transcript: voiceTranscript, audioUrl, startListening, stopListening, finalizeTranscription };
 }

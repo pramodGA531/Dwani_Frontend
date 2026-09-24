@@ -3,6 +3,7 @@ import useVoiceStream from '../hooks/useVoiceStream';
 
 export default function STTTest() {
   const [transcripts, setTranscripts] = useState([]);
+  const [pendingTranscript, setPendingTranscript] = useState(null);
   
   // Set mock session token for testing the STT endpoint
   useEffect(() => {
@@ -14,15 +15,27 @@ export default function STTTest() {
 
   const handleSilenceDetected = (finalText) => {
     if (finalText && finalText.trim() !== '' && finalText !== "candidate didnt respondedd") {
-      setTranscripts(prev => [...prev, finalText]);
+      setPendingTranscript(finalText);
     }
+  };
+
+  const confirmSendToAI = () => {
+    if (pendingTranscript) {
+      setTranscripts(prev => [...prev, pendingTranscript]);
+      setPendingTranscript(null);
+    }
+  };
+
+  const cancelTranscript = () => {
+    setPendingTranscript(null);
   };
 
   const {
     isListening,
     isProcessing,
     amplitude,
-    transcript, // This will be the browser's interim transcript if any, though it's disabled in the hook currently
+    transcript,
+    audioUrl,
     startListening,
     stopListening,
     finalizeTranscription
@@ -62,6 +75,42 @@ export default function STTTest() {
         <p className="text-sm text-gray-400 font-mono">
           Status: {isListening ? 'Listening...' : isProcessing ? 'Processing (Finalizing)...' : 'Idle'}
         </p>
+
+        {pendingTranscript && (
+          <div className="w-full bg-yellow-900/30 border border-yellow-700 p-4 rounded-lg mt-6">
+            <h3 className="text-yellow-400 font-semibold mb-2">Review before sending to AI:</h3>
+            <p className="text-gray-200 mb-4">{pendingTranscript}</p>
+            {audioUrl && (
+              <div className="mb-4">
+                <p className="text-sm text-gray-400 mb-1">Your recorded voice:</p>
+                <audio controls src={audioUrl} className="w-full h-10 rounded" />
+              </div>
+            )}
+            <div className="flex gap-4">
+              <button
+                onClick={() => {
+                  const utterance = new SpeechSynthesisUtterance(pendingTranscript);
+                  window.speechSynthesis.speak(utterance);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold transition-colors shadow-lg"
+              >
+                🔊 Listen
+              </button>
+              <button
+                onClick={confirmSendToAI}
+                className="px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-semibold transition-colors shadow-lg"
+              >
+                ✅ OK (Send to AI)
+              </button>
+              <button
+                onClick={cancelTranscript}
+                className="px-4 py-2 bg-red-600 hover:bg-red-500 rounded-lg text-sm font-semibold transition-colors shadow-lg"
+              >
+                ❌ Retry
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-gray-800 p-6 rounded-xl shadow-lg w-full max-w-3xl border border-gray-700 flex-1 flex flex-col">
@@ -71,8 +120,17 @@ export default function STTTest() {
             <p className="text-gray-500 italic text-center mt-8">No transcripts yet. Start recording to test the model.</p>
           )}
           {transcripts.map((text, i) => (
-            <div key={i} className="bg-gray-700 p-4 rounded-lg border border-gray-600 text-gray-200">
-              {text}
+            <div key={i} className="bg-gray-700 p-4 rounded-lg border border-gray-600 text-gray-200 flex justify-between items-center gap-4">
+              <span className="flex-1">{text}</span>
+              <button
+                onClick={() => {
+                  const utterance = new SpeechSynthesisUtterance(text);
+                  window.speechSynthesis.speak(utterance);
+                }}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-semibold transition-colors shadow-lg flex-shrink-0"
+              >
+                🔊 Listen
+              </button>
             </div>
           ))}
           {transcript && (

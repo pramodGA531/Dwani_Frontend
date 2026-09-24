@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wifi, ChevronRight, Shield, AlertTriangle } from 'lucide-react';
-import { useInterview } from '../context/InterviewContext';
+import { useInterview } from '../../context/InterviewContext';
 const MOCK_SESSION_START = Date.now() + 30 * 1000; // 30 seconds from now
 
 const WaitingRoom = () => {

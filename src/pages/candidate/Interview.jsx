@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useInterview } from '../context/InterviewContext';
+import { useInterview } from '../../context/InterviewContext';
 import {
   Bot, User, Clock, Mic, Pin, MoreVertical
 } from 'lucide-react';
-import VoiceInit from '../components/interviews/VoiceInit';
-import useVoiceStream from '../hooks/useVoiceStream';
+import VoiceInit from '../../components/interviews/VoiceInit';
+import useVoiceStream from '../../hooks/useVoiceStream';
 
 const ActiveInterview = () => {
   const navigate = useNavigate();
