@@ -516,8 +516,7 @@ const ActiveInterview = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 max-w-7xl mx-auto">
           <div className="flex items-center gap-5">
             <div className="text-2xl font-black bg-gradient-to-r from-blue-600 to-cyan-500 bg-clip-text text-transparent tracking-tight flex items-center gap-2">
-              <Bot size={28} className="text-blue-600" />
-              Dwani
+              <h1 className="text-2xl font-bold text-gray-900">Dwani<span className='text-purple-700'>AI</span></h1>
             </div>
             <div className="h-6 w-px bg-slate-200 hidden sm:block" />
             <div className="flex items-center gap-2 text-slate-600 font-medium text-sm bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">

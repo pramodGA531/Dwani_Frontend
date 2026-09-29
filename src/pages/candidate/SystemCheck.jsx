@@ -409,7 +409,7 @@ export default function SystemCheck() {
           <div className="w-10 h-10 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-200/50">
             <Shield size={20} className="text-white" strokeWidth={2.5} />
           </div>
-          <span className="font-black text-xl tracking-tight text-slate-900">Dwani</span>
+          <h1 className="text-2xl font-bold text-gray-900">Dwani<span className='text-purple-700'>AI</span></h1>
         </div>
         <div className="hidden sm:flex gap-2">
           {steps.map(step => (

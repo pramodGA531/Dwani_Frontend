@@ -86,7 +86,7 @@ export default function Login() {
           <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200 mb-4">
             <span className="material-symbols-outlined text-white text-3xl">work</span>
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">Recruiter Portal</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Dwani<span className='text-purple-700'>AI</span></h1>
           <p className="text-sm text-gray-500 mt-1">AI-Driven Hiring Platform</p>
         </div>
 

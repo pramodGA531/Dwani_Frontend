@@ -20,8 +20,8 @@ export default function Sidebar() {
               <span className="material-symbols-outlined text-white text-[18px]">work</span>
             </div>
             <div className="min-w-0">
-              <div className="text-[15px] font-bold tracking-tight text-gray-900 leading-tight truncate">Recruiter Portal</div>
-              <div className="text-[11px] text-gray-500 font-medium">AI Hiring</div>
+              <h1 className="text-2xl font-bold text-gray-900">Dwani<span className='text-purple-700'>AI</span></h1>
+              <div className="text-[11px] text-gray-500 font-medium">AI Driven interviews</div>
             </div>
           </div>
         </div>
