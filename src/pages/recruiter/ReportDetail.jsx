@@ -5,7 +5,7 @@ import api from '../../api/api';
 const defaultAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face";
 
 export default function ReportDetail() {
-  const { id } = useParams();
+  const { uuid } = useParams();
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
   const BackendAPI = import.meta.env.VITE_API;
@@ -19,7 +19,7 @@ export default function ReportDetail() {
   };
 
   const mockReport = {
-    id: id,
+    id: uuid,
     candidate_name: 'Jordan Devereaux',
     candidate_email: 'jordan.devereaux@techcorp.com',
     job_title: 'Senior Full-Stack Engineer',
@@ -46,7 +46,7 @@ export default function ReportDetail() {
   useEffect(() => {
     const fetchReportDetail = async () => {
       try {
-        const res = await api.get(`/interviews/reports/${id}/`);
+        const res = await api.get(`/interviews/reports/${uuid}/`);
         setReportData(res.data);
       } catch (err) {
         console.error("Error fetching report detail:", err);
@@ -56,7 +56,7 @@ export default function ReportDetail() {
       }
     };
     fetchReportDetail();
-  }, [id]);
+  }, [uuid]);
 
   const handleStatusUpdate = async (statusVal) => {
     try {
@@ -284,6 +284,51 @@ export default function ReportDetail() {
               )}
             </div>
           </div>
+
+          {/* Anomalies */}
+          {reportData.anomalies && reportData.anomalies.length > 0 && (
+            <div className="lg:col-span-12 bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-6">
+              <div className="flex items-center gap-2 text-red-700">
+                <span className="material-symbols-outlined">warning</span>
+                <h3 className="text-lg font-bold">Anomalies Detected</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {reportData.anomalies.map((anom, i) => (
+                  <div key={i} className="bg-red-50 rounded-lg p-4 border border-red-100 flex flex-col gap-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="text-[10px] font-bold text-red-400 uppercase tracking-widest mb-1">{anom.timestamp}</p>
+                        <p className="text-sm font-bold text-red-900">{anom.event_type}</p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-1 bg-white text-red-600 rounded border border-red-200 uppercase">
+                        {anom.severity}
+                      </span>
+                    </div>
+                    <div className="flex flex-row gap-2 mt-2 w-full">
+                      {anom.snapshot_url && (
+                        <div className="w-1/2 h-24 sm:h-32 rounded bg-black overflow-hidden relative">
+                          <img src={anom.snapshot_url} alt="Candidate" className="w-full h-full object-cover" />
+                          <div className="absolute top-0 left-0 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-br">Candidate</div>
+                          <a href={anom.snapshot_url} target="_blank" rel="noopener noreferrer" className="absolute bottom-1 right-1 bg-black/50 hover:bg-black/80 text-white rounded p-1 backdrop-blur transition">
+                            <span className="material-symbols-outlined text-[14px] block">open_in_new</span>
+                          </a>
+                        </div>
+                      )}
+                      {anom.screen_snapshot_url && (
+                        <div className="w-1/2 h-24 sm:h-32 rounded bg-black overflow-hidden relative">
+                          <img src={anom.screen_snapshot_url} alt="Screen" className="w-full h-full object-cover" />
+                          <div className="absolute top-0 left-0 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded-br">Screen</div>
+                          <a href={anom.screen_snapshot_url} target="_blank" rel="noopener noreferrer" className="absolute bottom-1 right-1 bg-black/50 hover:bg-black/80 text-white rounded p-1 backdrop-blur transition">
+                            <span className="material-symbols-outlined text-[14px] block">open_in_new</span>
+                          </a>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Candidate Feedback */}
           {reportData.candidate_feedback && (

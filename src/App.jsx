@@ -95,7 +95,7 @@ function App() {
               <Route path="/jobs" element={<Jobs />} />
               <Route path="/live-sessions" element={<LiveSessions />} />
               <Route path="/reports" element={<Reports />} />
-              <Route path="/report/:id" element={<ReportDetail />} />
+              <Route path="/report/:uuid" element={<ReportDetail />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/notifications" element={<Notifications />} />
             </Route>
