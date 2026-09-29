@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Mic, Video, Wifi, Monitor, CheckCircle2, ChevronRight, Volume2, Shield, Loader2, Play, Square, Info } from 'lucide-react';
+import { Mic, Video, Wifi, Monitor, CheckCircle2, ChevronRight, Volume2, Shield, Loader2, Play, Square, Info, FileCheck } from 'lucide-react';
 import { resolveInterviewState } from '../../utils/interviewSession';
 
 const steps = [
@@ -8,7 +8,8 @@ const steps = [
   { id: 2, title: 'Microphone Test', icon: Mic, desc: 'Check your audio quality' },
   { id: 3, title: 'Screen Share', icon: Monitor, desc: 'Enable screen sharing' },
   { id: 4, title: 'Network Check', icon: Wifi, desc: 'Verify connection stability' },
-  { id: 5, title: 'Ready', icon: CheckCircle2, desc: 'Final instructions' }
+  { id: 5, title: 'Consent', icon: FileCheck, desc: 'Review & agree to terms' },
+  { id: 6, title: 'Ready', icon: CheckCircle2, desc: 'Final instructions' }
 ];
 
 export default function SystemCheck() {
@@ -42,6 +43,11 @@ export default function SystemCheck() {
 
   // Step 4 State
   const [networkStatus, setNetworkStatus] = useState('idle'); // idle, testing, done
+
+  // Step 5 – Consent
+  const [consentVideo, setConsentVideo] = useState(false);
+  const [consentAI, setConsentAI] = useState(false);
+  const [consentHonesty, setConsentHonesty] = useState(false);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -179,7 +185,7 @@ export default function SystemCheck() {
 
   const nextStep = () => {
     if (currentStep === 1) captureSnapshot();
-    if (currentStep < 5) setCurrentStep(c => c + 1);
+    if (currentStep < 6) setCurrentStep(c => c + 1);
   };
 
   const handleJoin = () => {
@@ -199,6 +205,7 @@ export default function SystemCheck() {
     if (currentStep === 2) return audioTested;
     if (currentStep === 3) return screenGranted;
     if (currentStep === 4) return networkStatus === 'done';
+    if (currentStep === 5) return consentVideo && consentAI && consentHonesty;
     return true;
   };
 
@@ -353,11 +360,107 @@ export default function SystemCheck() {
       case 5:
         return (
           <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
+            <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(99,102,241,0.2)]">
+              <FileCheck size={40} />
+            </div>
+            <h2 className="text-2xl font-black text-slate-900 mb-2">Consent & Acknowledgement</h2>
+            <p className="text-slate-500 mb-8 text-center max-w-md">Please read and agree to the following before starting your assessment.</p>
+
+            <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-[32px] p-8 shadow-xl shadow-slate-200/50 space-y-5">
+
+              {/* Consent 1 – Video & Audio */}
+              <label className={`flex gap-4 items-start p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${
+                consentVideo ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+              }`}>
+                <div className="relative mt-0.5 shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={consentVideo}
+                    onChange={e => setConsentVideo(e.target.checked)}
+                  />
+                  <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+                    consentVideo ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'
+                  }`}>
+                    {consentVideo && <CheckCircle2 size={14} className="text-white" />}
+                  </div>
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900 text-sm mb-1">Video &amp; Audio Recording Consent</p>
+                  <p className="text-slate-500 text-xs leading-relaxed">
+                    I consent to my video and audio being recorded throughout this assessment. I understand this recording may be reviewed by the recruiter and retained for hiring evaluation purposes.
+                  </p>
+                </div>
+              </label>
+
+              {/* Consent 2 – AI Monitoring */}
+              <label className={`flex gap-4 items-start p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${
+                consentAI ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+              }`}>
+                <div className="relative mt-0.5 shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={consentAI}
+                    onChange={e => setConsentAI(e.target.checked)}
+                  />
+                  <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+                    consentAI ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'
+                  }`}>
+                    {consentAI && <CheckCircle2 size={14} className="text-white" />}
+                  </div>
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900 text-sm mb-1">AI Monitoring &amp; Proctoring</p>
+                  <p className="text-slate-500 text-xs leading-relaxed">
+                    I acknowledge that this session is actively monitored by an AI proctoring system. The system will analyse my behaviour, tab-switching activity, and facial presence. Violations may be flagged and shared with the recruiter.
+                  </p>
+                </div>
+              </label>
+
+              {/* Consent 3 – Honesty */}
+              <label className={`flex gap-4 items-start p-5 rounded-2xl border-2 cursor-pointer transition-all duration-200 ${
+                consentHonesty ? 'border-indigo-400 bg-indigo-50/60' : 'border-slate-200 hover:border-slate-300 bg-slate-50'
+              }`}>
+                <div className="relative mt-0.5 shrink-0">
+                  <input
+                    type="checkbox"
+                    className="sr-only"
+                    checked={consentHonesty}
+                    onChange={e => setConsentHonesty(e.target.checked)}
+                  />
+                  <div className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all duration-200 ${
+                    consentHonesty ? 'bg-indigo-600 border-indigo-600' : 'border-slate-300 bg-white'
+                  }`}>
+                    {consentHonesty && <CheckCircle2 size={14} className="text-white" />}
+                  </div>
+                </div>
+                <div>
+                  <p className="font-bold text-slate-900 text-sm mb-1">Honesty &amp; Academic Integrity</p>
+                  <p className="text-slate-500 text-xs leading-relaxed">
+                    I confirm I will complete this assessment independently without external assistance, AI tools, or any form of unfair aid. I understand that detected misconduct will result in immediate disqualification.
+                  </p>
+                </div>
+              </label>
+
+              {/* All agreed notice */}
+              {consentVideo && consentAI && consentHonesty && (
+                <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-2xl px-5 py-4 animate-in fade-in duration-300">
+                  <CheckCircle2 className="text-green-500 shrink-0" size={20} />
+                  <p className="text-sm font-semibold text-green-800">All consents acknowledged. You may proceed.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      case 6:
+        return (
+          <div className="flex flex-col items-center animate-in fade-in zoom-in duration-300">
             <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6 shadow-[0_0_40px_rgba(34,197,94,0.3)]">
               <CheckCircle2 size={48} />
             </div>
             <h2 className="text-3xl font-black text-slate-900 mb-4">All Systems Go</h2>
-            <p className="text-slate-600 mb-10 text-center max-w-lg text-lg">Your hardware has been successfully verified. You are now ready to start the interview.</p>
+            <p className="text-slate-600 mb-10 text-center max-w-lg text-lg">Your hardware has been verified and your consent recorded. You are now ready to start.</p>
 
             <div className="w-full max-w-2xl bg-white border border-slate-200 rounded-[32px] p-8 shadow-xl shadow-slate-200/50 mb-10">
               <h3 className="font-bold text-slate-900 mb-6 flex items-center gap-2">
@@ -459,7 +562,7 @@ export default function SystemCheck() {
               Step {currentStep} of {steps.length}
             </div>
 
-            {currentStep < 5 ? (
+            {currentStep < 6 ? (
               <button
                 onClick={nextStep}
                 disabled={!canProceed()}
