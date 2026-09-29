@@ -58,6 +58,15 @@ export default function SystemCheck() {
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
+  // Re-attach video stream when returning to fullscreen
+  useEffect(() => {
+    if (currentStep === 1 && stream && videoRef.current && isFullscreen) {
+      if (videoRef.current.srcObject !== stream) {
+        videoRef.current.srcObject = stream;
+      }
+    }
+  }, [currentStep, stream, isFullscreen]);
+
   useEffect(() => {
     const audio = audioRef.current;
     const handleEnded = () => setIsPlaying(false);
@@ -89,6 +98,11 @@ export default function SystemCheck() {
       setStream(ms);
       if (videoRef.current) videoRef.current.srcObject = ms;
       setCameraGranted(true);
+      
+      // Re-request fullscreen as browser may have exited it for the dialog
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(e => console.log(e));
+      }
     } catch (err) {
       setCameraGranted(false);
       setCameraError('Camera access denied. Please allow permissions.');
@@ -165,6 +179,7 @@ export default function SystemCheck() {
   const captureSnapshot = async () => {
     if (!videoRef.current || !location.state?.interview_session_token) return;
     try {
+      if (videoRef.current.videoWidth === 0 || videoRef.current.videoHeight === 0) return;
       const canvas = document.createElement('canvas');
       canvas.width = videoRef.current.videoWidth;
       canvas.height = videoRef.current.videoHeight;

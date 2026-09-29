@@ -207,9 +207,9 @@ export default function Jobs() {
         : null;
 
       const newCand = {
-        ...result.candidate_details,
+        ...(result.candidate_details || {}),
         id: Date.now().toString(),
-        ats_score: result.candidate_details.ats_score || 0,
+        ats_score: result.candidate_details?.ats_score || 0,
         resume_url: result.resume_url,
         local_resume_url: localResumeUrl,
         filename: resumeFile.name,
