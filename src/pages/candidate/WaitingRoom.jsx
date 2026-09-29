@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Wifi, ChevronRight, Shield, AlertTriangle } from 'lucide-react';
 import { useInterview } from '../../context/InterviewContext';
+import { resolveInterviewState } from '../../utils/interviewSession';
 const MOCK_SESSION_START = Date.now() + 30 * 1000; // 30 seconds from now
 
 const WaitingRoom = () => {
@@ -13,10 +14,11 @@ const WaitingRoom = () => {
   const [ready, setReady] = useState(false);
   const [countdown, setCountdown] = useState(0);
 
-  // Retrieve dynamic data from localStorage
-  const jobTitle = localStorage.getItem('job_title') || 'Software Engineer';
-  const interviewId = localStorage.getItem('interview_id') || 'IV-000-000';
-  const recruiterName = localStorage.getItem('recruiter_name') || 'Recruiter';
+  const location = useLocation();
+  const interviewState = resolveInterviewState(location.state);
+  const jobTitle = interviewState.job_title || 'Software Engineer';
+  const interviewId = interviewState.interview_id || 'IV-000-000';
+  const recruiterName = interviewState.recruiter_name || 'Recruiter';
   const displayInitials = recruiterName.substring(0, 2).toUpperCase();
 
   const handleJoin = async () => {
@@ -31,8 +33,11 @@ const WaitingRoom = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(t => t.stop());
     }
-    if (startInterview) await startInterview();
-    navigate('/interview');
+    if (startInterview) await startInterview(
+      interviewState.interview_session_token,
+      interviewState.interview_id
+    );
+    navigate('/interview', { state: interviewState });
   };
 
   useEffect(() => {

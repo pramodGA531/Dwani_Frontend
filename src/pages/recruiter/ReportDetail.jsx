@@ -1,13 +1,22 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import api from '../../api/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 const defaultAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face";
 
 export default function ReportDetail() {
   const { id } = useParams();
   const [reportData, setReportData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const BackendAPI = import.meta.env.VITE_API;
+
+  const getDownloadUrl = (url) => {
+    if (!url) return "#";
+    if (url.startsWith('http')) return url;
+    const baseUrl = BackendAPI.replace(/\/$/, '');
+    const path = url.startsWith('/') ? url : `/${url}`;
+    return `${baseUrl}${path}`;
+  };
 
   const mockReport = {
     id: id,
@@ -37,18 +46,8 @@ export default function ReportDetail() {
   useEffect(() => {
     const fetchReportDetail = async () => {
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/interviews/reports/${id}/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setReportData(data);
-        } else {
-          setReportData(mockReport);
-        }
+        const res = await api.get(`/interviews/reports/${id}/`);
+        setReportData(res.data);
       } catch (err) {
         console.error("Error fetching report detail:", err);
         setReportData(mockReport);
@@ -61,35 +60,30 @@ export default function ReportDetail() {
 
   const handleStatusUpdate = async (statusVal) => {
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/interviews/reports/${id}/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ status: statusVal })
-      });
-      if (res.ok) {
-        setReportData(prev => ({
-          ...prev,
-          status: statusVal === 'hire' ? 'Hire' : 'Reject'
-        }));
-        alert(`Candidate status updated successfully.`);
-      } else {
-        alert("Failed to update status on server, updating local view instead.");
-        setReportData(prev => ({
-          ...prev,
-          status: statusVal === 'hire' ? 'Hire' : 'Reject'
-        }));
-      }
+      await api.post(`/interviews/reports/${id}/`, { status: statusVal });
+      setReportData(prev => ({
+        ...prev,
+        status: statusVal === 'hire' ? 'Hire' : 'Reject'
+      }));
+      alert(`Candidate status updated successfully.`);
     } catch (err) {
       console.error("Failed to update candidate status:", err);
+      alert("Failed to update status on server, updating local view instead.");
       setReportData(prev => ({
         ...prev,
         status: statusVal === 'hire' ? 'Hire' : 'Reject'
       }));
     }
+  };
+
+  const handlePrint = () => {
+    if (!reportData) return;
+    const originalTitle = document.title;
+    document.title = `${reportData.candidate_name} - ${reportData.job_title} - ${reportData.created_at}`;
+    window.print();
+    setTimeout(() => {
+      document.title = originalTitle;
+    }, 1000);
   };
 
   if (loading) {
@@ -111,11 +105,10 @@ export default function ReportDetail() {
   }
 
   const scores = [
-    { label: 'Technical Knowledge', value: reportData.scores?.technical || reportData.overall_score || 85, color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Communication', value: reportData.scores?.communication || reportData.overall_score || 85, color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { label: 'Confidence', value: reportData.scores?.confidence || reportData.overall_score || 85, color: 'text-violet-600', bg: 'bg-violet-50' },
-    { label: 'Problem Solving', value: reportData.scores?.problem_solving || reportData.overall_score || 85, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Behavioral Analysis', value: reportData.scores?.behavioral || reportData.overall_score || 85, color: 'text-amber-600', bg: 'bg-amber-50' },
+    ...(reportData.ats_score !== undefined && reportData.ats_score !== null ? [{ label: 'JD Match Score', value: reportData.ats_score, color: 'text-purple-600', bg: 'bg-purple-50' }] : []),
+    { label: 'Technical Knowledge', value: reportData.scores?.technical || reportData.overall_score || 0, color: 'text-blue-600', bg: 'bg-blue-50' },
+    { label: 'Communication', value: reportData.scores?.communication || reportData.overall_score || 0, color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Problem Solving', value: reportData.scores?.problem_solving || reportData.overall_score || 0, color: 'text-emerald-600', bg: 'bg-emerald-50' }
   ];
 
   const initials = reportData.candidate_name
@@ -140,10 +133,10 @@ export default function ReportDetail() {
             <span className="material-symbols-outlined text-[20px] md:text-[24px]">arrow_back</span>
           </Link>
           <div className="h-12 w-12 md:h-16 md:w-16 rounded-xl bg-white border border-gray-100 flex items-center justify-center overflow-hidden shadow-sm shrink-0">
-            <img 
-              alt="Candidate Profile" 
-              className="w-full h-full object-cover" 
-              src={reportData.img || defaultAvatar} 
+            <img
+              alt="Candidate Profile"
+              className="w-full h-full object-cover"
+              src={reportData.profile_picture || reportData.img || defaultAvatar}
             />
           </div>
           <div className="min-w-0">
@@ -164,40 +157,21 @@ export default function ReportDetail() {
             </div>
             <p className="text-xs md:text-sm text-gray-500 mt-0.5 truncate">{reportData.job_title} • {reportData.created_at}</p>
           </div>
-        </div>
-        <div className="flex items-center gap-2 md:gap-3">
-          {reportData.interview_status !== 'rejected' && reportData.interview_status !== 'shortlisted' && (
-            <>
-              <button 
-                onClick={() => handleStatusUpdate('reject')}
-                className="flex-1 lg:flex-none px-4 md:px-6 py-2.5 border rounded-lg text-sm font-bold transition-all cursor-pointer border-red-200 text-red-600 hover:bg-red-50"
-              >
-                Reject
-              </button>
-              <button 
-                onClick={() => handleStatusUpdate('hire')}
-                className="flex-1 lg:flex-none px-4 md:px-6 py-2.5 rounded-lg text-sm font-bold transition-all shadow-sm cursor-pointer bg-blue-600 text-white hover:bg-blue-700"
-              >
-                Hire Candidate
-              </button>
-            </>
-          )}
-        </div>
+      </div>
       </div>
 
       <div className="space-y-6">
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
           {/* AI Summary Card */}
           <div className="lg:col-span-8 bg-white rounded-xl border border-gray-200 p-6 shadow-sm flex flex-col gap-4">
             <div className="flex items-center justify-between">
               <h3 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">AI Recommendation</h3>
-              <span className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide border ${
-                isRecommended 
+              <span className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-[11px] font-bold uppercase tracking-wide border ${isRecommended
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
                   : 'bg-gray-50 text-gray-500 border-gray-100'
-              }`}>
+                }`}>
                 <span className="material-symbols-outlined text-[16px]">
                   {isRecommended ? 'check_circle' : 'info'}
                 </span>
@@ -218,7 +192,7 @@ export default function ReportDetail() {
                   <p className="text-2xl font-bold text-gray-900">{score.value}<span className="text-sm font-normal text-gray-300">/100</span></p>
                 </div>
                 <div className={`w-12 h-12 rounded-full border-4 border-gray-100 flex items-center justify-center ${score.color}`}>
-                   <span className="text-xs font-bold">{score.value}%</span>
+                  <span className="text-xs font-bold">{score.value}%</span>
                 </div>
               </div>
             ))}
@@ -269,22 +243,22 @@ export default function ReportDetail() {
             </div>
           </div>
 
+
           {/* Transcript */}
           <div className="lg:col-span-12 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100 flex items-center justify-between">
-               <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3">
                 <span className="material-symbols-outlined text-gray-400">description</span>
                 <h3 className="text-lg font-bold text-gray-900">Full Interview Transcript</h3>
               </div>
-              {reportData.pdf_url && (
-                <a 
-                  href={reportData.pdf_url} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="text-sm font-bold text-blue-600 hover:underline"
+              {reportData && (
+                <button
+                  onClick={handlePrint}
+                  className="text-sm font-bold text-blue-600 hover:underline flex items-center gap-1 print:hidden"
                 >
-                  Download PDF
-                </a>
+                  <span className="material-symbols-outlined text-[18px]">print</span>
+                  Print / Save as PDF
+                </button>
               )}
             </div>
             <div className="p-6 space-y-6 bg-gray-50/30">
@@ -310,6 +284,42 @@ export default function ReportDetail() {
               )}
             </div>
           </div>
+
+          {/* Candidate Feedback */}
+          {reportData.candidate_feedback && (
+            <div className="lg:col-span-12 bg-white rounded-xl border border-gray-200 p-6 shadow-sm space-y-6">
+              <div className="flex items-center gap-2 text-blue-700">
+                <span className="material-symbols-outlined">feedback</span>
+                <h3 className="text-lg font-bold">Candidate Feedback</h3>
+              </div>
+              
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Overall Experience</p>
+                  <p className="text-2xl font-bold text-gray-900">{reportData.candidate_feedback.overall_experience || 0}<span className="text-sm font-normal text-gray-400">/5</span></p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">AI Clarity</p>
+                  <p className="text-2xl font-bold text-gray-900">{reportData.candidate_feedback.ai_clarity || 0}<span className="text-sm font-normal text-gray-400">/5</span></p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Ease of Use</p>
+                  <p className="text-2xl font-bold text-gray-900">{reportData.candidate_feedback.ease_of_use || 0}<span className="text-sm font-normal text-gray-400">/5</span></p>
+                </div>
+                <div className="bg-gray-50 rounded-lg p-4 border border-gray-100">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Tech Stability</p>
+                  <p className="text-2xl font-bold text-gray-900">{reportData.candidate_feedback.technical_stability || 0}<span className="text-sm font-normal text-gray-400">/5</span></p>
+                </div>
+              </div>
+              
+              {reportData.candidate_feedback.comment && (
+                <div className="bg-blue-50/50 rounded-lg p-4 border border-blue-100">
+                  <p className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mb-2">Additional Comments</p>
+                  <p className="text-sm text-gray-700 italic">"{reportData.candidate_feedback.comment}"</p>
+                </div>
+              )}
+            </div>
+          )}
 
         </div>
       </div>

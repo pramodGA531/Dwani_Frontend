@@ -36,6 +36,10 @@ export default function Sidebar() {
             <span className="material-symbols-outlined text-[20px]">work</span>
             <span>Jobs & Candidates</span>
           </NavLink>
+          <NavLink to="/live-sessions" className={getNavClass}>
+            <span className="material-symbols-outlined text-[20px]">videocam</span>
+            <span>Live Sessions</span>
+          </NavLink>
           <NavLink to="/reports" className={getNavClass}>
             <span className="material-symbols-outlined text-[20px]">analytics</span>
             <span>Reports</span>
@@ -53,6 +57,10 @@ export default function Sidebar() {
         <NavLink to="/jobs" className={({ isActive }) => `flex flex-col items-center justify-center flex-1 py-1.5 transition-all active:scale-95 ${isActive ? 'text-blue-600 scale-105' : 'text-gray-500 hover:text-blue-600'}`}>
           <span className="material-symbols-outlined mb-0.5 text-[22px]">work</span>
           <span className="text-[10px] font-extrabold uppercase tracking-wider">Jobs</span>
+        </NavLink>
+        <NavLink to="/live-sessions" className={({ isActive }) => `flex flex-col items-center justify-center flex-1 py-1.5 transition-all active:scale-95 ${isActive ? 'text-blue-600 scale-105' : 'text-gray-500 hover:text-blue-600'}`}>
+          <span className="material-symbols-outlined mb-0.5 text-[22px]">videocam</span>
+          <span className="text-[10px] font-extrabold uppercase tracking-wider">Live</span>
         </NavLink>
         <NavLink to="/reports" className={({ isActive }) => `flex flex-col items-center justify-center flex-1 py-1.5 transition-all active:scale-95 ${isActive ? 'text-blue-600 scale-105' : 'text-gray-500 hover:text-blue-600'}`}>
           <span className="material-symbols-outlined mb-0.5 text-[22px]">analytics</span>

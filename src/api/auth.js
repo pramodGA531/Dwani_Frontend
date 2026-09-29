@@ -4,21 +4,20 @@ export const auth = {
   async login(email, password) {
     const response = await api.post('/v1/auth/login/', { email, password });
     return {
-      token: response.data.access,
+      access: response.data.access,
       refresh: response.data.refresh,
       user: response.data.user
     };
   },
 
   async logout() {
-    localStorage.removeItem('token');
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('interview_id');
+    localStorage.removeItem('access');
+    localStorage.removeItem('refresh');
     return true;
   },
 
   async getSession() {
-    const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+    const token = localStorage.getItem('access');
     if (!token) return null;
     
     try {

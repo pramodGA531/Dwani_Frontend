@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-const API_BASE = `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1'}/auth`;
+import api from '../../api/api';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -17,33 +17,22 @@ export default function Login() {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API_BASE}/login/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: loginForm.email.trim().toLowerCase(), 
-          password: loginForm.password 
-        }),
+      const res = await api.post('/auth/login/', {
+        email: loginForm.email.trim().toLowerCase(), 
+        password: loginForm.password 
       });
-      const data = await res.json();
-      if (res.ok) {
-        const userRole = data.role || (data.user && data.user.role);
-        if (userRole === 'candidate') {
-          setMessage({ type: 'error', text: 'Access denied. Candidates cannot access the recruiter portal.' });
-          return;
-        }
-        localStorage.setItem('access', data.access);
-        localStorage.setItem('refresh', data.refresh);
-        localStorage.setItem('role', userRole);
-        if (data.user && data.user.email) {
-          localStorage.setItem('email', data.user.email);
-        }
-        navigate('/dashboard');
-      } else {
-        setMessage({ type: 'error', text: data.detail || 'Invalid credentials.' });
+      const data = res.data;
+      const userRole = data.role || (data.user && data.user.role);
+      if (userRole === 'candidate') {
+        setMessage({ type: 'error', text: 'Access denied. Candidates cannot access the recruiter portal.' });
+        return;
       }
-    } catch {
-      setMessage({ type: 'error', text: 'Server connection error.' });
+      localStorage.setItem('access', data.access);
+      localStorage.setItem('refresh', data.refresh);
+      navigate('/dashboard');
+    } catch (err) {
+      const data = err.response?.data || {};
+      setMessage({ type: 'error', text: data.detail || 'Invalid credentials.' });
     } finally {
       setLoading(false);
     }
@@ -58,39 +47,31 @@ export default function Login() {
     setLoading(true);
     setMessage(null);
     try {
-      const res = await fetch(`${API_BASE}/register/recruiter/`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          email: registerForm.email.trim().toLowerCase(), 
-          password: registerForm.password 
-        }),
+      await api.post('/auth/register/recruiter/', {
+        email: registerForm.email.trim().toLowerCase(), 
+        password: registerForm.password 
       });
-      const data = await res.json();
-      if (res.ok || res.status === 201) {
-        setMessage({ type: 'success', text: 'Access request submitted successfully!' });
-      } else {
-        // Handle validation errors from Django/DRF
-        let errorMsg = 'Registration failed.';
-        if (data) {
-          if (typeof data === 'object') {
-            // Extract the first error message from the object
-            const firstKey = Object.keys(data)[0];
-            const firstError = data[firstKey];
-            errorMsg = Array.isArray(firstError) ? firstError[0] : (data.detail || errorMsg);
-            
-            // Special case for email uniqueness
-            if (firstKey === 'email' && errorMsg.includes('exists')) {
-              errorMsg = 'This email is already registered.';
-            }
-          } else if (data.detail) {
-            errorMsg = data.detail;
+      setMessage({ type: 'success', text: 'Access request submitted successfully!' });
+    } catch (err) {
+      const data = err.response?.data || {};
+      // Handle validation errors from Django/DRF
+      let errorMsg = 'Registration failed.';
+      if (data) {
+        if (typeof data === 'object') {
+          // Extract the first error message from the object
+          const firstKey = Object.keys(data)[0];
+          const firstError = data[firstKey];
+          errorMsg = Array.isArray(firstError) ? firstError[0] : (data.detail || errorMsg);
+          
+          // Special case for email uniqueness
+          if (firstKey === 'email' && errorMsg.includes('exists')) {
+            errorMsg = 'This email is already registered.';
           }
+        } else if (data.detail) {
+          errorMsg = data.detail;
         }
-        setMessage({ type: 'error', text: errorMsg });
       }
-    } catch {
-      setMessage({ type: 'error', text: 'Server connection error.' });
+      setMessage({ type: 'error', text: errorMsg });
     } finally {
       setLoading(false);
     }

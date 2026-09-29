@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 
-export default function useVoiceStream({ onSilenceDetected, existingStream } = {}) {
+export default function useVoiceStream({ onSilenceDetected, existingStream, sessionToken } = {}) {
   const [isListening, setReactIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const isListeningRef = useRef(false);
@@ -103,7 +103,6 @@ export default function useVoiceStream({ onSilenceDetected, existingStream } = {
 
     // --- 2. SETUP BACKEND WEBSOCKET (For Robust Final Accuracy) ---
     try {
-      const sessionToken = localStorage.getItem('interview_session_token');
       if (!sessionToken) {
         console.warn("[STT] No session token found.");
         hasFatalErrorRef.current = true;

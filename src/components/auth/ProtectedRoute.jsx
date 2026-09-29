@@ -2,7 +2,16 @@ import { Navigate, Outlet } from 'react-router-dom';
 
 const ProtectedRoute = () => {
   const token = localStorage.getItem('access');
-  const role = localStorage.getItem('role');
+  
+  let role = null;
+  if (token) {
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      role = payload.role;
+    } catch (e) {
+      console.error("Invalid token format");
+    }
+  }
 
   const isAuthorized = !!token && (role === 'recruiter' || role === 'admin');
 
@@ -11,7 +20,6 @@ const ProtectedRoute = () => {
     if (token) {
         localStorage.removeItem('access');
         localStorage.removeItem('refresh');
-        localStorage.removeItem('role');
     }
     return <Navigate to="/" replace />;
   }

@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+import api from '../../api/api';
 
 export default function Notifications() {
   const [notifications, setNotifications] = useState([]);
@@ -10,14 +9,9 @@ export default function Notifications() {
   useEffect(() => {
     const fetchNotificationsData = async () => {
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/notifications/`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        
-        if (res.ok) {
-          const data = await res.json();
-          const mappedNotifications = data.map(n => {
+        const res = await api.get('/notifications/');
+        const data = res.data;
+        const mappedNotifications = data.map(n => {
             let icon = 'notifications';
             let iconColor = 'text-blue-600';
             let iconBg = 'bg-blue-50';
@@ -57,7 +51,6 @@ export default function Notifications() {
           });
 
           setNotifications(mappedNotifications);
-        }
       } catch (err) {
         console.error("Failed to load notifications", err);
       } finally {
@@ -71,16 +64,10 @@ export default function Notifications() {
   const handleMarkAsRead = async (id, e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/notifications/${id}/read/`, {
-        method: 'PUT',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        setNotifications(prev =>
-          prev.map(n => (n.id === id ? { ...n, unread: false } : n))
-        );
-      }
+      await api.put(`/notifications/${id}/read/`);
+      setNotifications(prev =>
+        prev.map(n => (n.id === id ? { ...n, unread: false } : n))
+      );
     } catch (err) {
       console.error("Failed to mark notification as read", err);
     }
@@ -88,14 +75,8 @@ export default function Notifications() {
 
   const handleMarkAllRead = async () => {
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/notifications/mark-all-read/`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
-      }
+      await api.post('/notifications/mark-all-read/');
+      setNotifications(prev => prev.map(n => ({ ...n, unread: false })));
     } catch (err) {
       console.error("Failed to mark all as read", err);
     }
@@ -104,14 +85,8 @@ export default function Notifications() {
   const handleDelete = async (id, e) => {
     if (e) { e.preventDefault(); e.stopPropagation(); }
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/notifications/${id}/`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        setNotifications(prev => prev.filter(n => n.id !== id));
-      }
+      await api.delete(`/notifications/${id}/`);
+      setNotifications(prev => prev.filter(n => n.id !== id));
     } catch (err) {
       console.error("Failed to delete notification", err);
     }
@@ -119,14 +94,8 @@ export default function Notifications() {
 
   const handleClearAll = async () => {
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/notifications/clear-all/`, {
-        method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      if (res.ok) {
-        setNotifications([]);
-      }
+      await api.delete('/notifications/clear-all/');
+      setNotifications([]);
     } catch (err) {
       console.error("Failed to clear notifications", err);
     }

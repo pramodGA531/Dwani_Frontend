@@ -1,29 +1,33 @@
 import { useState, useEffect } from 'react';
-import { 
-  EmptyCard, 
-  SelectedCard, 
-  LoadingCard, 
-  JDSuccessCard, 
-  ResumeSuccessCard 
+import {
+  EmptyCard,
+  SelectedCard,
+  LoadingCard,
+  JDSuccessCard,
+  ResumeSuccessCard
 } from '@/components/candidates/AIUploadCard';
 import CandidateCard from '@/components/common/CandidateCard';
 import CandidateDeepView from '@/components/candidates/CandidateDeepView';
+import api from '../../api/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 
 export default function Jobs() {
-  const [activeTab, setActiveTab] = useState('pipeline'); // 'screen' or 'pipeline'
+  const [activeTab, setActiveTab] = useState('screen'); // 'screen' or 'pipeline'
   const [jdFile, setJdFile] = useState(null);
   const [resumeFile, setResumeFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
-  
+
   // New state for extracted data
   const [jobConfig, setJobConfig] = useState(null);
   const [analysisResult, setAnalysisResult] = useState(null);
   const [showDeepView, setShowDeepView] = useState(false);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [previewFile, setPreviewFile] = useState(null);
+
+  // Job edit state
+  const [isEditingJob, setIsEditingJob] = useState(false);
+  const [editJobForm, setEditJobForm] = useState({ title: '', department: '', skills: '' });
 
   // Scheduling state for loading indicator
   const [schedulingCandidateId, setSchedulingCandidateId] = useState(null);
@@ -37,162 +41,171 @@ export default function Jobs() {
   const [candidateToConfigure, setCandidateToConfigure] = useState(null);
   const [dialogOption, setDialogOption] = useState('5'); // '5', '10', '15', '20', 'custom'
   const [dialogCustomValue, setDialogCustomValue] = useState('5');
+  const [dialogDate, setDialogDate] = useState("");
+  const [dialogTime, setDialogTime] = useState("");
   const [customError, setCustomError] = useState("");
-  const [questionCountState, setQuestionCountState] = useState({ questionCount: 5 });
 
   // Pipeline Tabs and Pagination states
   const [pipelineSubTab, setPipelineSubTab] = useState('all'); // 'all', 'awaiting_invite', 'scheduled_live', 'completed', 'hired', 'rejected'
-  const [visibleCount, setVisibleCount] = useState(6);
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 4;
 
   useEffect(() => {
-    setVisibleCount(6);
+    setCurrentPage(1);
   }, [pipelineSubTab, activeTab]);
 
-  // Screened list from LocalStorage or seed data
-  const [screenedList, setScreenedList] = useState(() => {
-    const userEmail = localStorage.getItem('email') || 'default';
-    const saved = localStorage.getItem(`screened_candidates_${userEmail}`);
-    if (saved) {
+  const [screenedList, setScreenedList] = useState([]);
+  const [pipelineStats, setPipelineStats] = useState({ all: 0, scheduled_live: 0, completed: 0 });
+  const [totalRecords, setTotalRecords] = useState(0);
+
+  useEffect(() => {
+    const fetchStats = async () => {
       try {
-        const parsed = JSON.parse(saved);
-        return parsed.filter(c => !String(c.id).startsWith('mock-'));
-      } catch (e) {
-        console.error(e);
+        const res = await api.get('/interviews/pipeline-stats/');
+        setPipelineStats(res.data);
+      } catch (err) {
+        console.error("Error fetching stats:", err);
       }
-    }
-    return [];
-  });
+    };
+    fetchStats();
+  }, [pipelineSubTab, activeTab]);
 
   useEffect(() => {
     const fetchCandidates = async () => {
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/interviews/interviews/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          const results = Array.isArray(data) ? data : (data.results || []);
-          const mapped = results.map(item => ({
-            id: item.id,
-            name: item.candidate_name || item.candidate_email,
-            email: item.candidate_email,
-            ats_score: Math.round(item.ats_score || 0),
-            screened_at: new Date(item.created_at).toLocaleDateString(),
-            job_title: item.job_title,
-            skills: item.skills || [],
-            highlights: item.highlights || [],
-            resume_text: item.resume_text,
-            status: item.status === 'pending' ? 'Interview Pending' : 
-                    item.status === 'in_progress' ? 'Interview In Progress' :
-                    item.status === 'completed' ? 'Interview Completed' : item.status,
-            session_token: item.session_token
-          }));
-          
-          const userEmail = localStorage.getItem('email') || 'default';
-          let localCandidates = JSON.parse(localStorage.getItem(`screened_candidates_${userEmail}`) || '[]');
-          localCandidates = localCandidates.filter(c => !String(c.id).startsWith('mock-'));
-          
-          // Create a map of API candidates by id for easy lookup
-          const apiCandidateMap = new Map();
-          mapped.forEach(c => apiCandidateMap.set(c.id, c));
+        const res = await api.get(`/interviews/interviews/?pipeline_tab=${pipelineSubTab}&page=${currentPage}`);
+        const data = res.data;
+        const results = Array.isArray(data.results) ? data.results : (Array.isArray(data) ? data : []);
+        setTotalRecords(data.count || results.length);
+        
+        const mapped = results.map(item => ({
+          id: item.id,
+          name: item.candidate_name || item.candidate_email,
+          email: item.candidate_email,
+          ats_score: Math.round(item.ats_score || 0),
+          screened_at: new Date(item.created_at).toLocaleDateString(),
+          job_title: item.job_title,
+          skills: item.skills || [],
+          highlights: item.highlights || [],
+          resume_text: item.resume_text,
+          status: item.status === 'pending' ? 'Interview Pending' :
+            item.status === 'in_progress' ? 'Interview In Progress' :
+              item.status === 'completed' ? 'Interview Completed' : item.status,
+          session_token: item.session_token
+        }));
 
-          // Merge: For each local candidate, if they exist in API, use API data (to get updated status), else keep local
-          const mergedList = localCandidates.map(localCand => {
-            if (apiCandidateMap.has(localCand.id)) {
-              const apiCand = apiCandidateMap.get(localCand.id);
-              apiCandidateMap.delete(localCand.id); // Remove from map so we don't add it twice
-              return { ...localCand, ...apiCand };
-            }
-            return localCand;
-          });
-
-          // Add any remaining API candidates that weren't in local storage
-          const finalList = [...Array.from(apiCandidateMap.values()), ...mergedList];
-          
-          setScreenedList(finalList);
-          localStorage.setItem(`screened_candidates_${userEmail}`, JSON.stringify(finalList));
-        }
+        setScreenedList(mapped);
       } catch (err) {
         console.error("Error fetching candidates:", err);
       }
     };
     fetchCandidates();
-  }, []);
+  }, [pipelineSubTab, currentPage]);
 
-  // Calculate counts for each pipeline stage
-  const countAll = screenedList.filter(c => c.status !== 'rejected').length;
-  const countAwaiting = screenedList.filter(c => c.status !== 'Interview Pending' && c.status !== 'Interview In Progress' && c.status !== 'Interview Completed' && c.status !== 'rejected').length;
-  const countScheduledLive = screenedList.filter(c => c.status === 'Interview Pending' || c.status === 'Interview In Progress').length;
-  const countCompleted = screenedList.filter(c => c.status === 'Interview Completed').length;
-  const countHired = screenedList.filter(c => c.status === 'shortlisted').length;
-  const countRejected = screenedList.filter(c => c.status === 'rejected').length;
+  const countAll = pipelineStats.all || 0;
+  const countAwaiting = 0;
+  const countScheduledLive = pipelineStats.scheduled_live || 0;
+  const countCompleted = pipelineStats.completed || 0;
+  const countHired = 0;
+  const countRejected = 0;
 
-  // Filter candidates according to selected sub-tab
-  const filteredCandidates = screenedList.filter(cand => {
-    if (pipelineSubTab === 'awaiting_invite') {
-      return cand.status !== 'Interview Pending' && cand.status !== 'Interview In Progress' && cand.status !== 'Interview Completed' && cand.status !== 'shortlisted' && cand.status !== 'rejected';
-    }
-    if (pipelineSubTab === 'scheduled_live') {
-      return cand.status === 'Interview Pending' || cand.status === 'Interview In Progress';
-    }
-    if (pipelineSubTab === 'completed') {
-      return cand.status === 'Interview Completed';
-    }
-    if (pipelineSubTab === 'hired') {
-      return cand.status === 'shortlisted';
-    }
-    if (pipelineSubTab === 'rejected') {
-      return cand.status === 'rejected';
-    }
-    return cand.status !== 'rejected';
-  });
-
-  const displayedCandidates = filteredCandidates.slice(0, visibleCount);
-  const hasMore = filteredCandidates.length > visibleCount;
+  const displayedCandidates = screenedList;
+  const totalPages = Math.ceil(totalRecords / itemsPerPage);
 
 
   const handleUpload = async () => {
-    if (!jdFile || !resumeFile) return;
+    if (!jdFile || !resumeFile) {
+      setMessage({
+        type: 'error',
+        text: 'Please upload both JD and Resume files.'
+      });
+      return;
+    }
 
+    // Allowed file types
+    const allowedMimeTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+
+    const allowedExtensions = ['pdf', 'docx'];
+
+    const isValidFile = (file) => {
+      const extension = file.name.split('.').pop().toLowerCase();
+
+      return (
+        allowedMimeTypes.includes(file.type) ||
+        allowedExtensions.includes(extension)
+      );
+    };
+
+    // Validate JD
+    if (!isValidFile(jdFile)) {
+      setMessage({
+        type: 'error',
+        text: 'JD file must be in PDF or DOCX format.'
+      });
+      return;
+    }
+
+    // Validate Resume
+    if (!isValidFile(resumeFile)) {
+      setMessage({
+        type: 'error',
+        text: 'Resume file must be in PDF or DOCX format.'
+      });
+      return;
+    }
+
+    // Both files are valid → API call
     setLoading(true);
     setMessage(null);
 
-    const token = localStorage.getItem('access');
-
     try {
       const formData = new FormData();
+
       formData.append('jd', jdFile);
       formData.append('resume', resumeFile);
-      formData.append('candidate_name', 'Extracted Candidate'); 
+      formData.append('candidate_name', 'Extracted Candidate');
       formData.append('candidate_email', 'extracted@example.com');
 
-      setMessage({ type: 'info', text: 'Uploading files and starting AI analysis...' });
-
-      const processRes = await fetch(`${API_BASE}/ai/screening/process/`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData,
+      setMessage({
+        type: 'info',
+        text: 'Uploading files and starting AI analysis...'
       });
 
-      const processContentType = processRes.headers.get("content-type");
-      if (!processContentType || !processContentType.includes("application/json")) {
-        const text = await processRes.text();
+      const processRes = await api.post(
+        '/ai/screening/process/',
+        formData,
+        {
+          headers: {
+            'Content-Type': 'multipart/form-data'
+          }
+        }
+      );
+
+      const processContentType =
+        processRes.headers["content-type"] ||
+        processRes.headers["Content-Type"];
+
+      if (
+        !processContentType ||
+        !processContentType.includes("application/json")
+      ) {
+        const text = processRes.data;
         console.error("Server returned non-JSON response:", text);
-        throw new Error(`AI Service Error: Server returned HTML. Check backend logs.`);
+
+        throw new Error(
+          'AI Service Error: Server returned HTML. Check backend logs.'
+        );
       }
 
-      const result = await processRes.json();
-      if (!processRes.ok) {
-        throw new Error(result.error || 'AI analysis failed');
-      }
-      
-      const localResumeUrl = resumeFile ? URL.createObjectURL(resumeFile) : null;
-      
+      const result = processRes.data;
+
+      const localResumeUrl = resumeFile
+        ? URL.createObjectURL(resumeFile)
+        : null;
+
       const newCand = {
         ...result.candidate_details,
         id: Date.now().toString(),
@@ -210,14 +223,23 @@ export default function Jobs() {
       setSelectedCandidate(newCand);
 
       const updatedList = [newCand, ...screenedList];
+
       setScreenedList(updatedList);
-      const userEmail = localStorage.getItem('email') || 'default';
-      localStorage.setItem(`screened_candidates_${userEmail}`, JSON.stringify(updatedList));
+
+
 
       setMessage(null);
 
     } catch (error) {
-      setMessage({ type: 'error', text: error.message });
+      const errorMsg =
+        error.response?.data?.error ||
+        error.message;
+
+      setMessage({
+        type: 'error',
+        text: errorMsg
+      });
+
     } finally {
       setLoading(false);
     }
@@ -227,11 +249,9 @@ export default function Jobs() {
     if (selectedCandidate) {
       const updated = { ...selectedCandidate, ...updatedData };
       setSelectedCandidate(updated);
-      
+
       const updatedList = screenedList.map(c => c.id === selectedCandidate.id ? updated : c);
       setScreenedList(updatedList);
-      const userEmail = localStorage.getItem('email') || 'default';
-      localStorage.setItem(`screened_candidates_${userEmail}`, JSON.stringify(updatedList));
     }
     if (analysisResult && (!selectedCandidate || selectedCandidate.id === analysisResult.id)) {
       setAnalysisResult(prev => ({ ...prev, ...updatedData }));
@@ -242,17 +262,18 @@ export default function Jobs() {
     if (!candidate) return;
     setDialogOption('5');
     setDialogCustomValue('5');
+    setDialogDate("");
+    setDialogTime("");
     setCustomError('');
     setCandidateToConfigure(candidate);
     setIsConfigDialogOpen(true);
   };
 
-  const executeScheduleInterview = async (candidate, questionCount) => {
+  const executeScheduleInterview = async (candidate, questionCount, date = dialogDate, time = dialogTime) => {
     if (!candidate) return;
     setSchedulingCandidateId(candidate.id);
     setMessage({ type: 'info', text: `Sending interview invite to ${candidate.name}...` });
 
-    const token = localStorage.getItem('access');
     const defaultConfig = {
       interview_type: 'Technical Interview',
       difficulty: 'Medium',
@@ -266,51 +287,40 @@ export default function Jobs() {
     };
 
     try {
-      const res = await fetch(`${API_BASE}/interviews/invite/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+      const res = await api.post('/interviews/invite/', {
+        email: candidate.email,
+        name: candidate.name,
+        job_title: candidate.job_title || jobConfig?.title,
+        interview_type: defaultConfig.interview_type,
+        difficulty: defaultConfig.difficulty,
+        duration: defaultConfig.duration,
+        config: {
+          ...defaultConfig,
+          question_count: questionCount
         },
-        body: JSON.stringify({
-          email: candidate.email,
-          name: candidate.name,
-          job_title: candidate.job_title || jobConfig?.title,
-          interview_type: defaultConfig.interview_type,
-          difficulty: defaultConfig.difficulty,
-          duration: defaultConfig.duration,
-          config: {
-            ...defaultConfig,
-            question_count: questionCount
-          },
-          questionCount: questionCount
-        }),
+        questionCount: questionCount,
+        start_date: date,
+        start_time: time
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        setMessage({ type: 'success', text: `✅ Interview link sent to ${candidate.email}` });
-        
-        // Update both list and detail statuses to include the real session_token and real interview_id
-        const updatedList = screenedList.map(c => 
-          c.id === candidate.id ? { ...c, id: data.interview_id, status: 'Interview Pending', session_token: data.session_token } : c
-        );
-        setScreenedList(updatedList);
-        const userEmail = localStorage.getItem('email') || 'default';
-        localStorage.setItem(`screened_candidates_${userEmail}`, JSON.stringify(updatedList));
+      const data = res.data;
+      setMessage({ type: 'success', text: `✅ Interview link sent to ${candidate.email}` });
 
-        if (analysisResult && analysisResult.id === candidate.id) {
-          setAnalysisResult(prev => ({ ...prev, id: data.interview_id, status: 'Interview Pending', session_token: data.session_token }));
-        }
-        if (selectedCandidate && selectedCandidate.id === candidate.id) {
-          setSelectedCandidate(prev => ({ ...prev, id: data.interview_id, status: 'Interview Pending', session_token: data.session_token }));
-        }
-      } else {
-        const data = await res.json();
-        throw new Error(data.error || 'Failed to send invite');
+      // Update both list and detail statuses to include the real session_token and real interview_id
+      const updatedList = screenedList.map(c =>
+        c.id === candidate.id ? { ...c, id: data.interview_id, status: 'Interview Pending', session_token: data.session_token } : c
+      );
+      setScreenedList(updatedList);
+
+      if (analysisResult && analysisResult.id === candidate.id) {
+        setAnalysisResult(prev => ({ ...prev, id: data.interview_id, status: 'Interview Pending', session_token: data.session_token }));
+      }
+      if (selectedCandidate && selectedCandidate.id === candidate.id) {
+        setSelectedCandidate(prev => ({ ...prev, id: data.interview_id, status: 'Interview Pending', session_token: data.session_token }));
       }
     } catch (err) {
-      setMessage({ type: 'error', text: err.message });
+      const errorMsg = err.response?.data?.error || err.message;
+      setMessage({ type: 'error', text: errorMsg });
     } finally {
       setSchedulingCandidateId(null);
     }
@@ -340,24 +350,12 @@ export default function Jobs() {
   const handlePerformDelete = async (cand) => {
     setCandidateToDelete(null);
     setDeletingId(cand.id);
-    
+
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/interviews/candidate/?email=${encodeURIComponent(cand.email)}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        const updatedList = screenedList.filter(c => c.id !== cand.id);
-        setScreenedList(updatedList);
-        const userEmail = localStorage.getItem('email') || 'default';
-        localStorage.setItem(`screened_candidates_${userEmail}`, JSON.stringify(updatedList));
-        alert("Candidate and associated data deleted successfully.");
-      } else {
-        alert("Failed to delete candidate from server.");
-      }
+      await api.delete(`/interviews/candidate/?email=${encodeURIComponent(cand.email)}`);
+      const updatedList = screenedList.filter(c => c.id !== cand.id);
+      setScreenedList(updatedList);
+      alert("Candidate and associated data deleted successfully.");
     } catch (err) {
       console.error("Failed to delete candidate:", err);
       alert("Error deleting candidate from server.");
@@ -377,22 +375,20 @@ export default function Jobs() {
         <div className="flex bg-gray-100 p-1 rounded-xl shrink-0 w-full sm:w-auto">
           <button
             onClick={() => setActiveTab('screen')}
-            className={`flex-1 sm:flex-none justify-center px-4 py-2 text-xs md:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
-              activeTab === 'screen'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-500 hover:text-gray-900'
-            }`}
+            className={`flex-1 sm:flex-none justify-center px-4 py-2 text-xs md:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${activeTab === 'screen'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-900'
+              }`}
           >
             <span className="material-symbols-outlined text-[18px]">upload_file</span>
             Upload & Screen
           </button>
           <button
             onClick={() => setActiveTab('pipeline')}
-            className={`flex-1 sm:flex-none justify-center px-4 py-2 text-xs md:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${
-              activeTab === 'pipeline'
-                ? 'bg-white text-blue-600 shadow-sm'
-                : 'text-gray-500 hover:text-gray-900'
-            }`}
+            className={`flex-1 sm:flex-none justify-center px-4 py-2 text-xs md:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 ${activeTab === 'pipeline'
+              ? 'bg-white text-blue-600 shadow-sm'
+              : 'text-gray-500 hover:text-gray-900'
+              }`}
           >
             <span className="material-symbols-outlined text-[18px]">group</span>
             Screened Pipeline ({screenedList.length})
@@ -404,7 +400,7 @@ export default function Jobs() {
         <div className={`p-4 rounded-xl text-sm font-semibold animate-in fade-in duration-300 flex items-center justify-between gap-4 ${message.type === 'error' ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
           <span>{message.text}</span>
           {message.type === 'success' && activeTab === 'screen' && (
-            <button 
+            <button
               onClick={() => setActiveTab('pipeline')}
               className="text-xs font-bold underline hover:no-underline cursor-pointer"
             >
@@ -421,6 +417,28 @@ export default function Jobs() {
             {/* Job Description Card */}
             {loading ? (
               <LoadingCard type="jd" />
+            ) : jobConfig && jdFile ? (
+              <JDSuccessCard
+                file={jdFile}
+                skills={jobConfig.skills}
+                onRemove={() => {
+                  setJdFile(null);
+                  setAnalysisResult(null);
+                  setJobConfig(null);
+                }}
+                onReplace={(file) => {
+                  setJdFile(file);
+                  setAnalysisResult(null);
+                  setJobConfig(null);
+                }}
+                onPreview={() => {
+                  setPreviewFile({
+                    name: jdFile.name,
+                    type: 'jd',
+                    url: URL.createObjectURL(jdFile)
+                  });
+                }}
+              />
             ) : jdFile ? (
               <SelectedCard
                 file={jdFile}
@@ -446,7 +464,7 @@ export default function Jobs() {
               <EmptyCard
                 icon="description"
                 title="Upload Job Description"
-                description="PDF, DOCX, or text content"
+                description="PDF or DOCX supported"
                 onFileSelect={setJdFile}
                 disabled={loading}
               />
@@ -455,6 +473,37 @@ export default function Jobs() {
             {/* Candidate Resume Card */}
             {loading ? (
               <LoadingCard type="resume" />
+            ) : analysisResult && resumeFile ? (
+              <ResumeSuccessCard
+                file={resumeFile}
+                candidateName={analysisResult.candidate_details?.name}
+                email={analysisResult.candidate_details?.email}
+                atsScore={analysisResult.evaluation?.match_score}
+                onRemove={() => {
+                  setResumeFile(null);
+                  setAnalysisResult(null);
+                }}
+                onReplace={(file) => {
+                  setResumeFile(file);
+                  setAnalysisResult(null);
+                }}
+                onUpdateEmail={(newEmail) => {
+                  setAnalysisResult(prev => ({
+                    ...prev,
+                    candidate_details: {
+                      ...prev.candidate_details,
+                      email: newEmail
+                    }
+                  }));
+                }}
+                onPreview={() => {
+                  setPreviewFile({
+                    name: resumeFile.name,
+                    type: 'resume',
+                    url: URL.createObjectURL(resumeFile)
+                  });
+                }}
+              />
             ) : resumeFile ? (
               <SelectedCard
                 file={resumeFile}
@@ -488,7 +537,7 @@ export default function Jobs() {
           </div>
 
           <div className="flex justify-end">
-            <button 
+            <button
               onClick={handleUpload}
               disabled={!jdFile || !resumeFile || loading}
               className="w-full md:w-auto bg-blue-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-blue-700 disabled:opacity-50 transition-all transform active:scale-95 flex items-center justify-center gap-2 shadow-lg shadow-blue-200 cursor-pointer"
@@ -506,42 +555,108 @@ export default function Jobs() {
           <section className={jobConfig ? 'animate-in fade-in slide-in-from-bottom-4 duration-700' : ''}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-label-uppercase text-slate-500 uppercase tracking-widest text-[11px]">Active Job Configuration</h3>
-              {jobConfig && (
-                <button className="text-primary text-sm font-semibold flex items-center gap-1 hover:underline cursor-pointer">
+              {jobConfig && !isEditingJob && (
+                <button
+                  onClick={() => {
+                    setEditJobForm({
+                      title: jobConfig.title || '',
+                      department: jobConfig.department || '',
+                      skills: (jobConfig.skills || []).join(', ')
+                    });
+                    setIsEditingJob(true);
+                  }}
+                  className="text-primary text-sm font-semibold flex items-center gap-1 hover:underline cursor-pointer"
+                >
                   <span className="material-symbols-outlined text-sm">edit</span> Edit Details
                 </button>
               )}
             </div>
-            
+
             <div className="bg-white border border-gray-200 rounded-xl p-4 md:p-6 shadow-sm">
               {jobConfig ? (
-                <>
-                  <div className="flex flex-col sm:flex-row items-start justify-between gap-4">
-                    <div className="flex items-center gap-4 w-full sm:w-auto min-w-0">
-                      <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 flex-shrink-0">
-                        <span className="material-symbols-outlined text-2xl md:text-3xl">work</span>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-lg md:text-xl font-bold text-gray-900 leading-tight break-words">{jobConfig.title}</h4>
-                        <p className="text-xs md:text-sm text-gray-500 mt-1 truncate">{jobConfig.department} • Full-time • Remote</p>
-                      </div>
+                isEditingJob ? (
+                  <div className="flex flex-col gap-4 animate-in fade-in duration-300">
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Job Title</label>
+                      <input
+                        type="text"
+                        className="w-full mt-1 p-2.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                        value={editJobForm.title}
+                        onChange={e => setEditJobForm({ ...editJobForm, title: e.target.value })}
+                        placeholder="e.g. Senior Frontend Engineer"
+                      />
                     </div>
-                    <div className="bg-gray-100 px-3 py-1 rounded-lg self-start shrink-0">
-                      <span className="text-[10px] md:text-[11px] font-bold text-gray-500 uppercase tracking-widest">EXTRACTED</span>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Department</label>
+                      <input
+                        type="text"
+                        className="w-full mt-1 p-2.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                        value={editJobForm.department}
+                        onChange={e => setEditJobForm({ ...editJobForm, department: e.target.value })}
+                        placeholder="e.g. Engineering"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Required Skills (comma separated)</label>
+                      <textarea
+                        className="w-full mt-1 p-2.5 border border-gray-200 rounded-lg text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all min-h-[80px] resize-y"
+                        value={editJobForm.skills}
+                        onChange={e => setEditJobForm({ ...editJobForm, skills: e.target.value })}
+                        placeholder="React, Node.js, TypeScript..."
+                      />
+                    </div>
+                    <div className="flex justify-end gap-3 mt-2 pt-4 border-t border-gray-100">
+                      <button
+                        onClick={() => setIsEditingJob(false)}
+                        className="px-4 py-2 text-sm font-bold text-gray-500 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => {
+                          setJobConfig({
+                            ...jobConfig,
+                            title: editJobForm.title,
+                            department: editJobForm.department,
+                            skills: editJobForm.skills.split(',').map(s => s.trim()).filter(Boolean)
+                          });
+                          setIsEditingJob(false);
+                        }}
+                        className="px-5 py-2 text-sm font-bold text-white bg-blue-600 rounded-xl hover:bg-blue-700 shadow-sm shadow-blue-200 transition-all active:scale-95"
+                      >
+                        Save Details
+                      </button>
                     </div>
                   </div>
-                  
-                  <div className="mt-6 pt-6 border-t border-gray-100">
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">REQUIRED SKILLS & STACK</p>
-                    <div className="flex flex-wrap gap-2">
-                      {jobConfig.skills.map(skill => (
-                        <span key={skill} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold border border-blue-100">
-                          {skill}
-                        </span>
-                      ))}
+                ) : (
+                  <>
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-4 animate-in fade-in duration-300">
+                      <div className="flex items-center gap-4 w-full sm:w-auto min-w-0">
+                        <div className="w-12 h-12 md:w-14 md:h-14 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600 flex-shrink-0">
+                          <span className="material-symbols-outlined text-2xl md:text-3xl">work</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-lg md:text-xl font-bold text-gray-900 leading-tight break-words">{jobConfig.title}</h4>
+                          <p className="text-xs md:text-sm text-gray-500 mt-1 truncate">{jobConfig.department} • Full-time • Remote</p>
+                        </div>
+                      </div>
+                      <div className="bg-gray-100 px-3 py-1 rounded-lg self-start shrink-0">
+                        <span className="text-[10px] md:text-[11px] font-bold text-gray-500 uppercase tracking-widest">EXTRACTED</span>
+                      </div>
                     </div>
-                  </div>
-                </>
+
+                    <div className="mt-6 pt-6 border-t border-gray-100">
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-3">REQUIRED SKILLS & STACK</p>
+                      <div className="flex flex-wrap gap-2">
+                        {jobConfig.skills.map(skill => (
+                          <span key={skill} className="px-3 py-1 bg-blue-50 text-blue-700 rounded-lg text-xs font-semibold border border-blue-100">
+                            {skill}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )
               ) : (
                 <div className="text-center py-8 text-gray-400">
                   <span className="material-symbols-outlined text-4xl mb-2">info</span>
@@ -557,11 +672,11 @@ export default function Jobs() {
               <h3 className="text-lg font-medium text-gray-900">Analysis Result</h3>
               {analysisResult && <span className="text-xs text-gray-400">Processed Just Now</span>}
             </div>
-            
+
             {analysisResult ? (
-              <CandidateCard 
-                candidate={analysisResult} 
-                jobTitle={analysisResult.job_title} 
+              <CandidateCard
+                candidate={analysisResult}
+                jobTitle={analysisResult.job_title}
                 onViewFullReport={() => {
                   setSelectedCandidate(analysisResult);
                   setShowDeepView(true);
@@ -585,37 +700,36 @@ export default function Jobs() {
           <div className="flex bg-slate-100/80 p-1 rounded-xl border border-slate-200/60 overflow-x-auto scrollbar-none gap-1">
             <button
               onClick={() => setPipelineSubTab('all')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                pipelineSubTab === 'all'
-                  ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
-                  : 'text-gray-500 hover:text-gray-950'
-              }`}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${pipelineSubTab === 'all'
+                ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
+                : 'text-gray-500 hover:text-gray-950'
+                }`}
             >
               All Screened
               <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-black ${pipelineSubTab === 'all' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200/60 text-gray-500'}`}>
                 {countAll}
               </span>
             </button>
+            {/*
             <button
               onClick={() => setPipelineSubTab('awaiting_invite')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                pipelineSubTab === 'awaiting_invite'
-                  ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
-                  : 'text-gray-500 hover:text-gray-950'
-              }`}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${pipelineSubTab === 'awaiting_invite'
+                ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
+                : 'text-gray-500 hover:text-gray-950'
+                }`}
             >
               Awaiting Invite
               <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-black ${pipelineSubTab === 'awaiting_invite' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200/60 text-gray-500'}`}>
                 {countAwaiting}
               </span>
             </button>
+            */}
             <button
               onClick={() => setPipelineSubTab('scheduled_live')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                pipelineSubTab === 'scheduled_live'
-                  ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
-                  : 'text-gray-500 hover:text-gray-950'
-              }`}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${pipelineSubTab === 'scheduled_live'
+                ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
+                : 'text-gray-500 hover:text-gray-950'
+                }`}
             >
               Scheduled / Live
               <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-black ${pipelineSubTab === 'scheduled_live' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200/60 text-gray-500'}`}>
@@ -624,24 +738,23 @@ export default function Jobs() {
             </button>
             <button
               onClick={() => setPipelineSubTab('completed')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                pipelineSubTab === 'completed'
-                  ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
-                  : 'text-gray-500 hover:text-gray-950'
-              }`}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${pipelineSubTab === 'completed'
+                ? 'bg-white text-blue-600 shadow-sm border border-slate-100'
+                : 'text-gray-500 hover:text-gray-950'
+                }`}
             >
               Completed
               <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-black ${pipelineSubTab === 'completed' ? 'bg-blue-50 text-blue-600' : 'bg-gray-200/60 text-gray-500'}`}>
                 {countCompleted}
               </span>
             </button>
+            {/*
             <button
               onClick={() => setPipelineSubTab('hired')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                pipelineSubTab === 'hired'
-                  ? 'bg-white text-emerald-600 shadow-sm border border-slate-100'
-                  : 'text-gray-500 hover:text-emerald-700'
-              }`}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${pipelineSubTab === 'hired'
+                ? 'bg-white text-emerald-600 shadow-sm border border-slate-100'
+                : 'text-gray-500 hover:text-emerald-700'
+                }`}
             >
               Hired
               <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-black ${pipelineSubTab === 'hired' ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-200/60 text-gray-500'}`}>
@@ -650,27 +763,26 @@ export default function Jobs() {
             </button>
             <button
               onClick={() => setPipelineSubTab('rejected')}
-              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${
-                pipelineSubTab === 'rejected'
-                  ? 'bg-white text-red-650 shadow-sm border border-slate-100'
-                  : 'text-gray-500 hover:text-red-650'
-              }`}
+              className={`px-3 py-1.5 text-xs sm:text-sm font-bold rounded-lg cursor-pointer transition-all flex items-center gap-1.5 whitespace-nowrap ${pipelineSubTab === 'rejected'
+                ? 'bg-white text-red-650 shadow-sm border border-slate-100'
+                : 'text-gray-500 hover:text-red-650'
+                }`}
             >
               Rejected
               <span className={`px-1.5 py-0.5 text-[10px] rounded-full font-black ${pipelineSubTab === 'rejected' ? 'bg-red-50 text-red-650' : 'bg-gray-200/60 text-gray-500'}`}>
                 {countRejected}
               </span>
             </button>
+            */}
           </div>
 
-          {filteredCandidates.length > 0 ? (
+          {screenedList.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 sm:gap-6">
               {displayedCandidates.map((cand) => (
-                <div 
-                  key={cand.id} 
-                  className={`bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group duration-300 ${
-                    deletingId === cand.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100 translate-y-0'
-                  }`}
+                <div
+                  key={cand.id}
+                  className={`bg-white border border-gray-200 rounded-2xl p-4 sm:p-5 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group duration-300 ${deletingId === cand.id ? 'opacity-0 scale-95 -translate-y-4 pointer-events-none' : 'opacity-100 scale-100 translate-y-0'
+                    }`}
                   onClick={() => {
                     setSelectedCandidate(cand);
                     setShowDeepView(true);
@@ -680,7 +792,7 @@ export default function Jobs() {
                     <div className="flex items-start justify-between gap-3 sm:gap-4">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 sm:w-10 sm:h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center font-black text-xs sm:text-sm shrink-0">
-                           {cand.name ? cand.name.split(' ').map(n => n[0]).join('') : 'C'}
+                          {cand.name ? cand.name.split(' ').map(n => n[0]).join('') : 'C'}
                         </div>
                         <div className="min-w-0">
                           <h4 className="text-sm font-extrabold text-gray-950 group-hover:text-blue-600 transition-colors leading-tight truncate">
@@ -755,7 +867,7 @@ export default function Jobs() {
                         Rejected
                       </span>
                     ) : (
-                      <button 
+                      <button
                         onClick={(e) => {
                           e.stopPropagation();
                           handleScheduleInterview(cand);
@@ -784,20 +896,28 @@ export default function Jobs() {
                 </div>
               ))}
 
-              {hasMore && (
-                <div 
-                  onClick={() => setVisibleCount(prev => prev + 6)}
-                  className="bg-slate-50/50 border border-dashed border-slate-300 hover:border-blue-400 hover:bg-slate-50 hover:shadow-md transition-all cursor-pointer rounded-2xl p-6 flex flex-col items-center justify-center text-center group h-full min-h-[200px] duration-300"
-                >
-                  <div className="w-11 h-11 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-110 transition-transform">
-                    <span className="material-symbols-outlined text-xl">more_horiz</span>
+              {/* Pagination Controls */}
+              {totalPages > 1 && (
+                <div className="col-span-full py-4 mt-2 flex items-center justify-between">
+                  <span className="text-sm text-gray-500 font-medium bg-white px-3 py-1.5 rounded-lg border border-gray-100 shadow-sm">
+                    Showing {(currentPage - 1) * itemsPerPage + 1} to {Math.min(currentPage * itemsPerPage, totalRecords)} of {totalRecords} Candidates
+                  </span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                      disabled={currentPage === 1}
+                      className="px-4 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 hover:text-blue-600 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                    >
+                      Previous
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                      disabled={currentPage === totalPages}
+                      className="px-4 py-2 text-sm font-bold text-gray-600 bg-white border border-gray-200 hover:bg-gray-50 hover:text-blue-600 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm"
+                    >
+                      Next
+                    </button>
                   </div>
-                  <h4 className="text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
-                    Show {filteredCandidates.length - visibleCount} More Candidates
-                  </h4>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Viewing {visibleCount} of {filteredCandidates.length} in this stage
-                  </p>
                 </div>
               )}
             </div>
@@ -812,27 +932,31 @@ export default function Jobs() {
         </section>
       )}
 
-      <CandidateDeepView 
+      <CandidateDeepView
         isOpen={showDeepView}
         onClose={() => {
           setShowDeepView(false);
           setSelectedCandidate(null);
         }}
-        candidate={selectedCandidate} 
+        candidate={selectedCandidate}
         jobConfig={selectedCandidate?.job_config || jobConfig}
         onUpdateCandidate={handleUpdateCandidate}
-        onSchedule={() => handleScheduleInterview(selectedCandidate)}
+        onSchedule={(date, time) => {
+          if (date && time) {
+            executeScheduleInterview(selectedCandidate, 5, date, time);
+          } else {
+            handleScheduleInterview(selectedCandidate);
+          }
+        }}
         isScheduling={schedulingCandidateId === selectedCandidate?.id}
         onReject={() => {
-           setShowDeepView(false);
-           const updatedList = screenedList.map(c => 
-             c.id === selectedCandidate.id ? { ...c, status: 'rejected' } : c
-           );
-           setScreenedList(updatedList);
-           const userEmail = localStorage.getItem('email') || 'default';
-           localStorage.setItem(`screened_candidates_${userEmail}`, JSON.stringify(updatedList));
-           setSelectedCandidate(null);
-           setMessage({ type: 'info', text: 'Candidate status updated to Rejected.' });
+          setShowDeepView(false);
+          const updatedList = screenedList.map(c =>
+            c.id === selectedCandidate.id ? { ...c, status: 'rejected' } : c
+          );
+          setScreenedList(updatedList);
+          setSelectedCandidate(null);
+          setMessage({ type: 'info', text: 'Candidate status updated to Rejected.' });
         }}
       />
 
@@ -852,7 +976,7 @@ export default function Jobs() {
                   <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">File Preview</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setPreviewFile(null)}
                 className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
               >
@@ -861,8 +985,8 @@ export default function Jobs() {
             </div>
             <div className="flex-1 bg-slate-100 p-4 flex items-center justify-center overflow-auto">
               {previewFile.url ? (
-                <iframe 
-                  src={previewFile.url} 
+                <iframe
+                  src={previewFile.url}
                   className="w-full h-full rounded-lg border border-slate-200 shadow-sm"
                   title="Document Preview"
                 />
@@ -910,7 +1034,7 @@ export default function Jobs() {
       {isConfigDialogOpen && candidateToConfigure && (
         <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-300">
           <div className="bg-white border border-gray-100 rounded-t-2xl sm:rounded-2xl p-6 w-full sm:max-w-md shadow-2xl animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
-            
+
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -922,7 +1046,7 @@ export default function Jobs() {
                   <p className="text-xs text-gray-500 mt-0.5">For {candidateToConfigure.name}</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => {
                   setIsConfigDialogOpen(false);
                   setCandidateToConfigure(null);
@@ -987,6 +1111,40 @@ export default function Jobs() {
                   )}
                 </div>
               )}
+
+              <div className="grid grid-cols-2 gap-4 pt-2 border-t border-gray-100">
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Start Date</label>
+                  <input 
+                    type="date" 
+                    value={dialogDate} 
+                    onChange={e => {
+                      setDialogDate(e.target.value);
+                      setCustomError("");
+                    }} 
+                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl px-3.5 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all cursor-pointer"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Start Time</label>
+                  <input 
+                    type="time" 
+                    value={dialogTime} 
+                    onChange={e => {
+                      setDialogTime(e.target.value);
+                      setCustomError("");
+                    }} 
+                    className="w-full bg-gray-50 border border-gray-200 text-gray-800 rounded-xl px-3.5 py-3 text-sm font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all cursor-pointer"
+                  />
+                </div>
+              </div>
+              
+              <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex gap-2 items-start mt-2">
+                <span className="material-symbols-outlined text-blue-500 text-[18px] shrink-0 mt-0.5">info</span>
+                <p className="text-xs text-blue-700 font-medium">
+                  <strong>Note:</strong> Exam link is valid for 24 hours from the selected start time.
+                </p>
+              </div>
             </div>
 
             {/* Footer */}
@@ -1013,15 +1171,17 @@ export default function Jobs() {
                   } else {
                     finalCount = parseInt(dialogOption, 10);
                   }
-                  
-                  // Store in state
-                  setQuestionCountState({ questionCount: finalCount });
-                  
+
+                  if (!dialogDate || !dialogTime) {
+                    setCustomError("Please select both a start date and time.");
+                    return;
+                  }
+
                   // Trigger schedule
                   const cand = candidateToConfigure;
                   setIsConfigDialogOpen(false);
                   setCandidateToConfigure(null);
-                  executeScheduleInterview(cand, finalCount);
+                  executeScheduleInterview(cand, finalCount, dialogDate, dialogTime);
                 }}
                 className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-blue-100 transition-colors cursor-pointer"
               >

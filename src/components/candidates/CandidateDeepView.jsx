@@ -14,7 +14,9 @@ export default function CandidateDeepView({
   isScheduling,
 }) {
   const status = candidate?.status || "Awaiting Review";
+  const canSchedule = status === "Awaiting Review" || status === "Shortlisted";
   const scheduled = status === "Interview Pending";
+  const isInProgress = status === "In Progress";
   const navigate = useNavigate();
 
   // Email Editing State
@@ -23,6 +25,9 @@ export default function CandidateDeepView({
   const [emailError, setEmailError] = useState("");
   const [isSavingEmail, setIsSavingEmail] = useState(false);
   const [isExplanationExpanded, setIsExplanationExpanded] = useState(false);
+  // Scheduling State
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
 
   if (!isOpen || !candidate) return null;
 
@@ -35,16 +40,27 @@ export default function CandidateDeepView({
     resume_url = "",
   } = candidate;
 
+  const BackendAPI = import.meta.env.VITE_API;
+
+  const resolveUrl = (url) => {
+    if (!url) return null;
+    if (url.startsWith('http') || url.startsWith('blob:')) return url;
+    const baseUrl = BackendAPI.replace(/\/$/, '');
+    const path = url.startsWith('/') ? url : `/${url}`;
+    return `${baseUrl}${path}`;
+  };
+
   // Helper to determine the best preview URL based on file type
-  const getPreviewUrl = (url) => {
+  const getPreviewUrl = (rawUrl) => {
+    const url = resolveUrl(rawUrl);
     if (!url) return null;
     if (url.startsWith('blob:')) return `${url}#toolbar=0`;
-    
+
     // If it's a PDF, allow the browser to render it natively
     if (url.toLowerCase().includes('.pdf')) {
       return `${url}#toolbar=0`;
     }
-    
+
     // Force Google Docs viewer for DOCX or other formats to prevent auto-downloads in the iframe.
     return `https://docs.google.com/gview?url=${encodeURIComponent(url)}&embedded=true`;
   };
@@ -151,10 +167,10 @@ export default function CandidateDeepView({
 
         {/* Modal Body - Scrollable */}
         <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] space-y-6">
-          
+
           {/* Full-Width Candidate Profile Header */}
           <div className="bg-white border border-gray-100 rounded-2xl p-4 sm:p-6 shadow-sm flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-6">
-            
+
             {/* Left Side: Avatar & Candidate Info */}
             <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6 flex-1 min-w-0 w-full">
               {/* Avatar */}
@@ -295,16 +311,19 @@ export default function CandidateDeepView({
 
             {/* Right Side: Action Buttons */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-2 w-full lg:w-64 xl:w-80 shrink-0">
-              <Button
-                onClick={() => navigate(`/live-monitoring/${candidate.session_token || candidate.id}`, { state: { candidate } })}
-                className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 px-3 text-xs sm:col-span-2 lg:col-span-1 xl:col-span-2"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  visibility
-                </span>
-                Monitor Live Session
-              </Button>
-              {candidate.session_token && (
+              {isInProgress && (
+                <Button
+                  onClick={() => navigate(`/live-monitoring/${candidate.session_token || candidate.id}`, { state: { candidate } })}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold h-9 rounded-xl shadow-lg shadow-indigo-100 flex items-center justify-center gap-2 px-3 text-xs sm:col-span-2 lg:col-span-1 xl:col-span-2"
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    visibility
+                  </span>
+                  Monitor Live Session
+                </Button>
+              )}
+              
+              {(scheduled || isInProgress) && candidate.session_token && (
                 <Button
                   onClick={() => {
                     const frontendUrl = import.meta.env.VITE_FRONTEND_URL || import.meta.env.VITE_API_BASE_URL?.replace('/api/v1', '').replace(':8000', ':5173') || 'http://192.168.0.114:5173';
@@ -320,61 +339,85 @@ export default function CandidateDeepView({
                   Copy Session Link
                 </Button>
               )}
-              <Button
-                onClick={onSchedule}
-                disabled={scheduled || isScheduling}
-                className={`w-full font-bold h-9 rounded-xl shadow-lg flex items-center justify-center gap-2 transition-all px-3 text-xs ${
-                  scheduled 
-                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-50 shadow-none' 
-                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-100'
-                }`}
-              >
-                {isScheduling ? (
-                  <>
-                    <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
-                    Sending Invite...
-                  </>
-                ) : scheduled ? (
-                  <>
-                    <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                    Invite Sent
-                  </>
-                ) : (
-                  <>
-                    <span className="material-symbols-outlined text-[18px]">calendar_today</span>
-                    Schedule Interview
-                  </>
-                )}
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => window.open(resume_url, "_blank")}
-                className="w-full border-gray-200 text-gray-700 font-bold h-9 rounded-xl hover:bg-gray-50 flex items-center justify-center gap-2 px-3 text-xs"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  download
-                </span>
-                Download Resume
-              </Button>
-              <Button
-                variant="outline"
-                onClick={onReject}
-                className="w-full border-red-100 text-red-600 font-bold h-9 rounded-xl hover:bg-red-50 flex items-center justify-center gap-2 px-3 text-xs sm:col-span-2 lg:col-span-1 xl:col-span-2"
-              >
-                <span className="material-symbols-outlined text-[18px]">
-                  person_remove
-                </span>
-                Reject Candidate
-              </Button>
+
+              {!canSchedule && (
+                <Button
+                  variant="outline"
+                  onClick={() => window.open(resume_url, "_blank")}
+                  className="w-full border-gray-200 text-gray-700 font-bold h-9 rounded-xl hover:bg-gray-50 flex items-center justify-center gap-2 px-3 text-xs sm:col-span-2 lg:col-span-1 xl:col-span-2"
+                >
+                  <span className="material-symbols-outlined text-[18px]">
+                    download
+                  </span>
+                  Download Resume
+                </Button>
+              )}
+
+              {/* Scheduling UI - Shows only when Awaiting Review */}
+              {canSchedule && (
+                <div className="space-y-2 sm:col-span-2 lg:col-span-1 xl:col-span-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Start Date</label>
+                      <input 
+                        type="date" 
+                        value={scheduleDate} 
+                        onChange={e => setScheduleDate(e.target.value)} 
+                        className="w-full h-9 bg-gray-50 border border-gray-200 text-gray-800 rounded-xl px-2.5 text-[11px] font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all cursor-pointer"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Start Time</label>
+                      <input 
+                        type="time" 
+                        value={scheduleTime} 
+                        onChange={e => setScheduleTime(e.target.value)} 
+                        className="w-full h-9 bg-gray-50 border border-gray-200 text-gray-800 rounded-xl px-2.5 text-[11px] font-semibold focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all cursor-pointer"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="bg-blue-50 border border-blue-100 rounded-xl p-2.5 flex gap-2 items-start shadow-sm mt-1 mb-2">
+                    <span className="material-symbols-outlined text-blue-500 text-[16px] shrink-0 mt-0.5">info</span>
+                    <p className="text-[10px] text-blue-700 font-medium leading-tight">
+                      <strong>Note:</strong> Exam link is valid for 24 hours from the selected start time.
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={() => {
+                      if (!scheduleDate || !scheduleTime) {
+                        alert("Please select both start date and time before scheduling.");
+                        return;
+                      }
+                      onSchedule(scheduleDate, scheduleTime);
+                    }}
+                    disabled={isScheduling}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 rounded-xl shadow-lg shadow-blue-100 flex items-center justify-center gap-2 transition-all px-3 text-xs"
+                  >
+                    {isScheduling ? (
+                      <>
+                        <span className="w-3.5 h-3.5 border-2 border-current border-t-transparent rounded-full animate-spin"></span>
+                        Sending Invite...
+                      </>
+                    ) : (
+                      <>
+                        <span className="material-symbols-outlined text-[18px]">calendar_today</span>
+                        Schedule Interview
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
 
           {/* Main Content Area */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            
+
             {/* Left Column: Resume Preview & AI Summary */}
             <div className="lg:col-span-8 space-y-6">
-              
+
               {/* Resume Preview */}
               <div className="bg-white border border-gray-100 rounded-2xl overflow-hidden shadow-sm flex flex-col h-[400px] md:h-[550px] lg:h-[650px] relative">
                 {/* Sticky Section Header */}
@@ -386,7 +429,7 @@ export default function CandidateDeepView({
                     Resume Preview
                   </h3>
                   <div className="flex items-center gap-2">
-                    <button 
+                    <button
                       onClick={() => {
                         const preview = resume_url || candidate.local_resume_url;
                         if (preview) window.open(preview, "_blank");
@@ -518,7 +561,7 @@ export default function CandidateDeepView({
 
             {/* Right Column: Skills, Experience, Education */}
             <div className="lg:col-span-4 space-y-6">
-              
+
               {/* Technical Skills */}
               <div className="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-sm">
                 <h3 className="text-sm font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -608,7 +651,7 @@ export default function CandidateDeepView({
                           {edu.year}
                         </span>
                       </div>
-                      
+
                       {edu.specialization && (
                         <p className="text-[11px] font-semibold text-blue-600">
                           {edu.specialization}

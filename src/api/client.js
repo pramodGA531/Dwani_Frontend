@@ -11,7 +11,7 @@ api.interceptors.request.use((config) => {
   // Skip auth header for public endpoints
   const isPublicEndpoint = config.url && config.url.includes('validate-session');
   if (!isPublicEndpoint) {
-    const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+    const token = localStorage.getItem('access');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

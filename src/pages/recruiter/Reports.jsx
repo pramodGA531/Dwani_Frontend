@@ -1,8 +1,7 @@
-
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import api from '../../api/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
 const defaultAvatar = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop&crop=face";
 
 export default function Reports() {
@@ -10,20 +9,19 @@ export default function Reports() {
   const [loading, setLoading] = useState(true);
   const [candidateToDelete, setCandidateToDelete] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortBy, setSortBy] = useState('score-desc');
 
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/interviews/reports/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setReportsList(data);
-        }
+        const res = await api.get(`/interviews/reports/?page=${currentPage}`);
+        setReportsList(res.data.results || []);
+        setTotalCount(res.data.count || 0);
+        setTotalPages(Math.ceil((res.data.count || 0) / 10) || 1);
       } catch (err) {
         console.error("Failed to fetch reports:", err);
       } finally {
@@ -31,7 +29,7 @@ export default function Reports() {
       }
     };
     fetchReports();
-  }, []);
+  }, [currentPage]);
 
   const handleConfirmDelete = (report) => {
     setCandidateToDelete(report);
@@ -42,19 +40,9 @@ export default function Reports() {
     setDeletingId(report.id);
     
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/interviews/candidate/?email=${encodeURIComponent(report.email)}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      if (res.ok) {
-        setReportsList(prev => prev.filter(r => r.id !== report.id));
-        alert("Candidate and associated data deleted successfully.");
-      } else {
-        alert("Failed to delete candidate from server.");
-      }
+      await api.delete(`/interviews/candidate/?email=${encodeURIComponent(report.email)}`);
+      setReportsList(prev => prev.filter(r => r.id !== report.id));
+      alert("Candidate and associated data deleted successfully.");
     } catch (err) {
       console.error("Failed to delete candidate:", err);
       alert("Error deleting candidate from server.");
@@ -64,7 +52,22 @@ export default function Reports() {
   };
 
   const reports = reportsList;
-  const sortedReports = [...reports].sort((a, b) => b.score - a.score);
+  
+  // Filter by search query
+  const filteredReports = reports.filter(r => 
+    (r.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (r.role || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (r.email || '').toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Sort
+  const sortedReports = [...filteredReports].sort((a, b) => {
+    if (sortBy === "score-desc") return b.score - a.score;
+    if (sortBy === "score-asc") return a.score - b.score;
+    if (sortBy === "name-asc") return (a.name || '').localeCompare(b.name || '');
+    if (sortBy === "name-desc") return (b.name || '').localeCompare(a.name || '');
+    return 0;
+  });
 
   return (
     <div className="space-y-6">
@@ -82,12 +85,20 @@ export default function Reports() {
               className="pl-9 pr-4 py-2 bg-white border border-gray-200 rounded-lg text-sm w-full md:w-64 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all" 
               placeholder="Search reports..." 
               type="text" 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shrink-0">
-            <span className="material-symbols-outlined text-[20px]">filter_list</span>
-            <span className="hidden sm:inline">Filter</span>
-          </button>
+          <select 
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors shrink-0 outline-none focus:ring-2 focus:ring-blue-500/20"
+          >
+            <option value="score-desc">Score: High to Low</option>
+            <option value="score-asc">Score: Low to High</option>
+            <option value="name-asc">Name: A-Z</option>
+            <option value="name-desc">Name: Z-A</option>
+          </select>
         </div>
       </div>
 
@@ -101,13 +112,16 @@ export default function Reports() {
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-gray-400">Candidate</th>
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center">AI Score</th>
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-gray-400">Recommendation</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center">Reasoning (LLM)</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center">Audio (STT)</th>
+                <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-center">Total Cost</th>
                 <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-gray-400 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
               {sortedReports.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="px-6 py-12 text-center text-gray-500 font-semibold">
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500 font-semibold">
                     <span className="material-symbols-outlined text-4xl mb-2 text-gray-300">description</span>
                     <p>No reports to show</p>
                   </td>
@@ -120,7 +134,7 @@ export default function Reports() {
                       <td className="px-6 py-5">
                         <div className="flex items-center gap-3">
                           <div className="w-10 h-10 rounded-full bg-gray-100 overflow-hidden border border-gray-100">
-                            <img alt={report.name} className="w-full h-full object-cover" src={report.img || defaultAvatar} />
+                            <img alt={report.name} className="w-full h-full object-cover" src={report.profile_picture || defaultAvatar} />
                           </div>
                           <div>
                             <div className="text-sm font-semibold text-gray-900">{report.name}</div>
@@ -146,6 +160,23 @@ export default function Reports() {
                         }`}>
                           {report.status === 'shortlisted' ? 'Hired' : report.status === 'rejected' ? 'Rejected' : report.status}
                         </span>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs font-semibold text-gray-700">{report.ai_tokens || 0} tkns</span>
+                          <span className="text-[10px] text-gray-400 font-bold">₹{report.ai_cost_inr_exact || 0}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex flex-col items-center">
+                          <span className="text-xs font-semibold text-gray-700">{report.stt_seconds || 0} sec</span>
+                          <span className="text-[10px] text-gray-400 font-bold">₹{report.stt_cost_inr_exact || 0}</span>
+                        </div>
+                      </td>
+                      <td className="px-6 py-5">
+                        <div className="flex flex-col items-center">
+                          <span className="text-sm font-semibold text-emerald-600">₹{report.total_cost_inr || 0}</span>
+                        </div>
                       </td>
                       <td className="px-6 py-5">
                         <div className="flex items-center justify-end gap-2">
@@ -201,8 +232,8 @@ export default function Reports() {
                   </div>
                   
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-                    <div className="self-start sm:self-auto">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wide border ${
+                    <div className="flex flex-col gap-2 self-start sm:self-auto">
+                      <span className={`px-2.5 py-1 rounded-full w-fit text-[10px] font-bold uppercase tracking-wide border ${
                         report.status === 'rejected'
                           ? 'bg-red-50 text-red-700 border-red-100'
                           : isRecommended 
@@ -211,6 +242,11 @@ export default function Reports() {
                       }`}>
                         {report.status === 'shortlisted' ? 'Hired' : report.status === 'rejected' ? 'Rejected' : report.status}
                       </span>
+                      <div className="text-[10px] text-gray-500 font-medium space-y-0.5">
+                        <div><span className="font-bold text-gray-700">LLM:</span> {report.ai_tokens || 0} tkns (₹{report.ai_cost_inr_exact || 0})</div>
+                        <div><span className="font-bold text-gray-700">STT:</span> {report.stt_seconds || 0} sec (₹{report.stt_cost_inr_exact || 0})</div>
+                        <div className="text-xs">Total: <span className="text-emerald-600 font-bold">₹{report.total_cost_inr || 0}</span></div>
+                      </div>
                     </div>
                     <div className="flex items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
                       <Link 
@@ -234,7 +270,28 @@ export default function Reports() {
         </div>
       </div>
 
-      <p className="text-center text-gray-400 text-xs mt-8 font-medium">Showing {sortedReports.length} of {sortedReports.length} generated reports</p>
+      {/* Pagination Controls */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 px-4">
+          <button 
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Previous
+          </button>
+          <span className="text-sm text-gray-500 font-medium">Page {currentPage} of {totalPages}</span>
+          <button 
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            className="px-4 py-2 text-sm font-semibold text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          >
+            Next
+          </button>
+        </div>
+      )}
+
+      <p className="text-center text-gray-400 text-xs mt-8 font-medium">Showing {sortedReports.length} of {totalCount} generated reports</p>
 
       {/* DELETE CONFIRMATION MODAL */}
       {candidateToDelete && (

@@ -1,8 +1,7 @@
 
 
 import { useState, useEffect } from 'react';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+import api from '../../api/api';
 
 export default function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -18,16 +17,8 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/interviews/dashboard-stats/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setStatsData(data);
-        }
+        const res = await api.get('/interviews/dashboard-stats/');
+        setStatsData(res.data);
       } catch (err) {
         console.error("Failed to fetch dashboard statistics", err);
       } finally {
@@ -39,7 +30,7 @@ export default function Dashboard() {
 
   const stats = [
     { label: 'Total Jobs', value: statsData.total_jobs.toString(), icon: 'work', change: 'Active postings', color: 'text-blue-600', bg: 'bg-blue-50' },
-    { label: 'Total Candidates', value: statsData.total_candidates.toString(), icon: 'group', change: 'All time', color: 'text-indigo-600', bg: 'bg-indigo-50' },
+    { label: 'Total Interviews', value: statsData.total_candidates.toString(), icon: 'group', change: 'All time', color: 'text-indigo-600', bg: 'bg-indigo-50' },
     { label: 'Active Interviews', value: statsData.active_interviews.toString(), icon: 'video_chat', change: 'Live tracking', color: 'text-violet-600', bg: 'bg-violet-50' },
   ];
 

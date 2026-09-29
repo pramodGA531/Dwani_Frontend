@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+import api from '../../api/api';
 
 export default function Header() {
   const [hasUnread, setHasUnread] = useState(false);
@@ -9,17 +8,10 @@ export default function Header() {
   useEffect(() => {
     const checkUnread = async () => {
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/notifications/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const notifications = await res.json();
-          const activeUnread = notifications.some(n => n.unread);
-          setHasUnread(activeUnread);
-        }
+        const res = await api.get('/notifications/');
+        const notifications = res.data;
+        const activeUnread = notifications.some(n => n.unread);
+        setHasUnread(activeUnread);
       } catch (err) {
         console.error("Failed to check unread notifications count", err);
       }

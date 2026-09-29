@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import api from '../../api/api';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -39,9 +40,7 @@ const INITIAL_MESSAGES = [];
 const INITIAL_SCORES = [
   { name: "Technical Knowledge", score: 0, trend: "steady" },
   { name: "Communication", score: 0, trend: "steady" },
-  { name: "Confidence", score: 0, trend: "steady" },
-  { name: "Problem Solving", score: 0, trend: "steady" },
-  { name: "Behavioral Analysis", score: 0, trend: "steady" },
+  { name: "Problem Solving", score: 0, trend: "steady" }
 ];
 
 export default function LiveMonitoring() {
@@ -91,14 +90,8 @@ export default function LiveMonitoring() {
 
     const fetchSessionData = async () => {
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/interviews/live-monitoring/${sessionId}/`, {
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
-        });
-        if (res.ok) {
-          const data = await res.json();
+        const res = await api.get(`/interviews/live-monitoring/${sessionId}/`);
+        const data = res.data;
           setCandidateInfo({
             name: data.candidate_name,
             email: data.candidate_email,
@@ -113,9 +106,7 @@ export default function LiveMonitoring() {
             setScores([
               { name: "Technical Knowledge", score: data.scores.technical || 80, trend: "up" },
               { name: "Communication", score: data.scores.communication || 80, trend: "steady" },
-              { name: "Confidence", score: data.scores.confidence || 80, trend: "up" },
-              { name: "Problem Solving", score: data.scores.problem_solving || 80, trend: "steady" },
-              { name: "Behavioral Analysis", score: data.scores.behavioral || 80, trend: "up" }
+              { name: "Problem Solving", score: data.scores.problem_solving || 80, trend: "steady" }
             ]);
           }
           if (data.status === 'completed') {
@@ -125,7 +116,6 @@ export default function LiveMonitoring() {
           } else {
             setStatus("Interview Not Started");
           }
-        }
       } catch (err) {
         console.error("Failed to fetch session detail", err);
       }
@@ -179,9 +169,7 @@ export default function LiveMonitoring() {
               setScores([
                 { name: "Technical Knowledge", score: Math.round(data.evaluation.accuracy_score || 80), trend: "up" },
                 { name: "Communication", score: Math.round(data.evaluation.clarity_score || 80), trend: "steady" },
-                { name: "Confidence", score: Math.round(data.evaluation.relevance_score || 80), trend: "up" },
-                { name: "Problem Solving", score: Math.round(data.evaluation.accuracy_score || 80), trend: "up" },
-                { name: "Behavioral Analysis", score: Math.round(data.evaluation.relevance_score || 80), trend: "up" }
+                { name: "Problem Solving", score: Math.round(data.evaluation.accuracy_score || 80), trend: "up" }
               ]);
             }
           } else if (data.type === 'end_session') {

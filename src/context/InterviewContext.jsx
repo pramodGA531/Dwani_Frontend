@@ -12,28 +12,35 @@ export const InterviewProvider = ({ children }) => {
   const [loading, setLoading] = useState(false);
   const [numQuestions, setNumQuestions] = useState(5);
 
-  const startInterview = async () => {
+  // interviewSessionData holds the token/id passed in from the page via startInterview()
+  const [interviewSessionData, setInterviewSessionData] = useState({});
+
+  const startInterview = async (sessionToken, interviewId) => {
     if (loading) return;
     setLoading(true);
+    // Persist session data so submitAnswer can use it
+    const sessionData = { interview_session_token: sessionToken, interview_id: interviewId };
+    setInterviewSessionData(sessionData);
+
     try {
-      const token = localStorage.getItem('interview_session_token');
-      if (!token) {
+      if (!sessionToken) {
         console.warn("No session token found. Initialising mock interview flow.");
         setQuestions(MOCK_INTERVIEW_QUESTIONS);
+        setNumQuestions(MOCK_INTERVIEW_QUESTIONS.length);
         setCurrentIndex(0);
         setAnswers({});
         setIsComplete(false);
         return;
       }
 
-      const data = await interviewService.startInterview(token);
-      
+      const data = await interviewService.startInterview(sessionToken);
+
       const loadedQuestions = data.questions || [];
       setQuestions(loadedQuestions);
       if (data.num_questions) {
         setNumQuestions(data.num_questions);
       }
-      
+
       // If the interview is already completed, mark it
       if (data.status === 'completed') {
         setIsComplete(true);
@@ -58,15 +65,14 @@ export const InterviewProvider = ({ children }) => {
   const submitAnswer = async (questionId, transcript, forceFinish = false) => {
     setLoading(true);
     try {
-      const token = localStorage.getItem('interview_session_token');
+      const token = interviewSessionData.interview_session_token;
       const currentQ = questions[currentIndex];
-      
+
       // Save the answer locally
       setAnswers(prev => ({ ...prev, [currentIndex]: transcript }));
 
       if (!token) {
-        // Mock mode progression:
-        // Move to next mock question or finish after numQuestions
+        // Mock mode progression
         const nextIndex = currentIndex + 1;
         if (nextIndex >= Math.min(questions.length, numQuestions)) {
           setIsComplete(true);
@@ -76,28 +82,24 @@ export const InterviewProvider = ({ children }) => {
         return;
       }
 
-      const interviewId = localStorage.getItem('interview_id');
+      const interviewId = interviewSessionData.interview_id;
 
       // Send to backend for Groq evaluation and next question generation
       const data = await interviewService.submitAnswer(
-        interviewId, 
-        currentQ.text, 
-        transcript, 
+        interviewId,
+        currentQ.text,
+        transcript,
         currentIndex,
         token,
         forceFinish
       );
 
       if (data.is_complete || forceFinish) {
-        // Store interview_id for results page (backend returns it on completion)
-        if (data.interview_id) {
-          localStorage.setItem('interview_id', data.interview_id);
-        }
         setIsComplete(true);
       } else if (data.next_question) {
         // Append the new dynamically generated question to the array
         setQuestions(prev => [
-          ...prev, 
+          ...prev,
           { text: data.next_question, index: data.index }
         ]);
         setCurrentIndex(data.index);

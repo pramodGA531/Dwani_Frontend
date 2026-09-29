@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Check, Star } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
 import api from '../../api/client';
 
 const submissionStyles = `
@@ -215,6 +216,8 @@ const Submission = () => {
     technical_stability: 0,
   });
   const [comment, setComment] = useState('');
+  const location = useLocation();
+  const interviewState = location.state || {};
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
@@ -222,7 +225,7 @@ const Submission = () => {
 
   // Automatically play thank you / farewell greeting via TTS when landing on submission
   useEffect(() => {
-    const candidateName = localStorage.getItem('candidate_name') || '';
+    const candidateName = interviewState.candidate_name || '';
     const firstName = candidateName ? candidateName.split(' ')[0] : '';
     
     // Warm and professional greeting template
@@ -244,7 +247,7 @@ const Submission = () => {
   const handleSubmit = async () => {
     setSubmitting(true);
     setError(null);
-    const token = localStorage.getItem('interview_session_token');
+    const token = interviewState.interview_session_token;
     
     if (!token) {
       // Mock flow simulation
@@ -252,11 +255,14 @@ const Submission = () => {
       setTimeout(() => {
         setSubmitted(true);
         setSubmitting(false);
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(e => console.log("Could not exit fullscreen", e));
+        }
       }, 500);
       return;
     }
 
-    const interviewId = localStorage.getItem('interview_id');
+    const interviewId = interviewState.interview_id;
     try {
       await api.post('/v1/interviews/submit-review/', {
         interview_id: interviewId,
@@ -271,6 +277,9 @@ const Submission = () => {
       setSubmitted(true);
     } finally {
       setSubmitting(false);
+      if (document.fullscreenElement) {
+        document.exitFullscreen().catch(e => console.log("Could not exit fullscreen", e));
+      }
     }
   };
 

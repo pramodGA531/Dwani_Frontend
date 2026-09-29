@@ -5,7 +5,7 @@ const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [token, setToken] = useState(localStorage.getItem('access'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -17,12 +17,14 @@ export const AuthProvider = ({ children }) => {
             setUser(userData);
           } else {
             setToken(null);
-            localStorage.removeItem('token');
+            localStorage.removeItem('access');
+            localStorage.removeItem('refresh');
           }
         } catch (error) {
           console.error('Auth initialization failed:', error);
           setToken(null);
-          localStorage.removeItem('token');
+          localStorage.removeItem('access');
+          localStorage.removeItem('refresh');
         }
       }
       setLoading(false);
@@ -32,9 +34,12 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const response = await authService.login(email, password);
-    setToken(response.token);
+    setToken(response.access);
     setUser(response.user);
-    localStorage.setItem('token', response.token);
+    localStorage.setItem('access', response.access);
+    if (response.refresh) {
+      localStorage.setItem('refresh', response.refresh);
+    }
     return response;
   };
 
@@ -42,7 +47,8 @@ export const AuthProvider = ({ children }) => {
     await authService.logout();
     setToken(null);
     setUser(null);
-    localStorage.removeItem('token');
+    localStorage.removeItem('access');
+    localStorage.removeItem('refresh');
   };
 
   const value = {

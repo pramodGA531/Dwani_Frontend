@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+import api from '../../api/api';
 
 export default function Profile() {
   const navigate = useNavigate();
@@ -13,7 +12,7 @@ export default function Profile() {
   // Profile Information State
   const [profile, setProfile] = useState({
     fullName: '',
-    email: localStorage.getItem('email') || '',
+    email: '',
     role: '',
     company: '',
     department: '',
@@ -46,7 +45,6 @@ export default function Profile() {
   const handleLogout = () => {
     localStorage.removeItem('access');
     localStorage.removeItem('refresh');
-    localStorage.removeItem('role');
     navigate('/');
   };
 
@@ -54,23 +52,17 @@ export default function Profile() {
     const fetchProfile = async () => {
       setIsLoading(true);
       try {
-        const token = localStorage.getItem('access');
-        const res = await fetch(`${API_BASE}/auth/me/`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.email) localStorage.setItem('email', data.email);
-          setProfile({
-            fullName:   data.full_name    || '',
-            email:      data.email        || localStorage.getItem('email') || '',
+        const res = await api.get('/auth/me/');
+        const data = res.data;
+        setProfile({
+          fullName:   data.full_name    || '',
+            email:      data.email        || '',
             role:       data.title        || '',
             company:    data.company_name || '',
             department: data.department   || '',
             phone:      data.phone ? String(data.phone) : '',
-            location:   data.location     || '',
-          });
-        }
+          location:   data.location     || '',
+        });
       } catch (err) {
         console.error('Failed to load user profile', err);
       } finally {
@@ -101,38 +93,25 @@ export default function Profile() {
 
     setIsSaving(true);
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/auth/me/`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          full_name:    profile.fullName,
-          title:        profile.role,
-          company_name: profile.company,
-          department:   profile.department,
-          phone:        profile.phone ? parseInt(profile.phone, 10) : null,
-          location:     profile.location,
-        })
+      const res = await api.patch('/auth/me/', {
+        full_name:    profile.fullName,
+        title:        profile.role,
+        company_name: profile.company,
+        department:   profile.department,
+        phone:        profile.phone ? parseInt(profile.phone, 10) : null,
+        location:     profile.location,
       });
-      if (res.ok) {
-        // Reconcile with the authoritative server response
-        const data = await res.json();
-        setProfile(prev => ({
-          ...prev,
-          fullName:   data.full_name    || '',
-          role:       data.title        || '',
-          company:    data.company_name || '',
-          department: data.department   || '',
-          phone:      data.phone ? String(data.phone) : '',
-          location:   data.location     || '',
-        }));
-      } else {
-        // Revert to server state if save failed
-        console.error('Profile save failed:', res.status);
-      }
+      // Reconcile with the authoritative server response
+      const data = res.data;
+      setProfile(prev => ({
+        ...prev,
+        fullName:   data.full_name    || '',
+        role:       data.title        || '',
+        company:    data.company_name || '',
+        department: data.department   || '',
+        phone:      data.phone ? String(data.phone) : '',
+        location:   data.location     || '',
+      }));
     } catch (err) {
       console.error('Failed to update profile', err);
     } finally {
@@ -156,33 +135,21 @@ export default function Profile() {
 
     setIsChangingPassword(true);
     try {
-      const token = localStorage.getItem('access');
-      const res = await fetch(`${API_BASE}/auth/change-password/`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          current_password: passwordForm.current,
-          new_password: passwordForm.new
-        })
+      await api.put('/auth/change-password/', {
+        current_password: passwordForm.current,
+        new_password: passwordForm.new
       });
 
-      const data = await res.json();
-      if (res.ok) {
-        setPasswordSuccess(true);
-        setPasswordForm({ current: '', new: '', confirm: '' });
-        setTimeout(() => {
-          setShowChangePasswordModal(false);
-          setPasswordSuccess(false);
-        }, 2000);
-      } else {
-        setPasswordError(data.error || "Failed to change password");
-      }
+      setPasswordSuccess(true);
+      setPasswordForm({ current: '', new: '', confirm: '' });
+      setTimeout(() => {
+        setShowChangePasswordModal(false);
+        setPasswordSuccess(false);
+      }, 2000);
     } catch (err) {
+      const data = err.response?.data || {};
       console.error("Password change failed:", err);
-      setPasswordError("A network error occurred. Please try again.");
+      setPasswordError(data.error || "Failed to change password");
     } finally {
       setIsChangingPassword(false);
     }

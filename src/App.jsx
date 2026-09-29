@@ -24,6 +24,7 @@ const Reports = React.lazy(() => import('./pages/recruiter/Reports'));
 const ReportDetail = React.lazy(() => import('./pages/recruiter/ReportDetail'));
 const Profile = React.lazy(() => import('./pages/recruiter/Profile'));
 const LiveMonitoring = React.lazy(() => import('./pages/recruiter/LiveMonitoring'));
+const LiveSessions = React.lazy(() => import('./pages/recruiter/LiveSessions'));
 const Notifications = React.lazy(() => import('./pages/recruiter/Notifications'));
 
 // Test Pages
@@ -92,6 +93,7 @@ function App() {
             <Route element={<Layout />}>
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/jobs" element={<Jobs />} />
+              <Route path="/live-sessions" element={<LiveSessions />} />
               <Route path="/reports" element={<Reports />} />
               <Route path="/report/:id" element={<ReportDetail />} />
               <Route path="/profile" element={<Profile />} />
